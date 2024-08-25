@@ -1,0 +1,5 @@
+Part 1 — connect to Isoptera: 
+Intel recently hired a new CEO, and their stock price jumped up around $8/share as a result.  Was the old CEO really that bad?  Or is it that Intel, who once brought down the big RISC architecture server chips with inexpensive x86 processors, being brought down by inexpensive ARM processors?  I think the answer to this question will become clear within the next few years
+
+Part 2: start a server and connect with h1client:
+armadillo
