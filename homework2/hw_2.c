@@ -43,11 +43,11 @@ int main(int argc, char ** argv){
 		return 1;
 	}
 
-  // read 5 int32's, then reverse endiannes with htonl
+  // read 5 int32's, then reverse endiannes with ntohl 
   for(int i = 0; i < 5; i++){
     int32_t curr;
     read(skt, &curr, 4);
-    printf("int32_t #%d: %d\n", i, htonl(curr));
+    printf("int32_t #%d: %d\n", i, ntohl(curr));
   }
 
 	close(skt);
