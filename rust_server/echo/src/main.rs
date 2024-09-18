@@ -1,40 +1,81 @@
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::io::Read;
-use std::io::Write;
 
-fn handle_client(mut stream: TcpStream) {
-    // read 20 bytes at a time from stream echoing back to stream
+fn say_helo(stream : &mut TcpStream){
+    stream.write_all(format!("{}", "plz to be giving your name: ").as_bytes());
+}
+
+fn handle_client(stream: TcpStream, clients: Arc<Mutex<HashMap<String, TcpStream>>>) {
+    let mut reader: BufReader<&TcpStream> = BufReader::new(&stream);
+
+    let mut username: String = String::new();
+    if reader.read_line(&mut username).is_err() {
+        return;
+    }
+    let username: String = username.trim().to_string();
+
+    println!("{} connected", username);
+
+    clients.lock().unwrap().insert(username.clone(), stream.try_clone().unwrap());
+
     loop {
-        let mut read = [0; 1028];
-        match stream.read(&mut read) {
-            Ok(n) => {
-                if n == 0 { 
-                    // connection was closed
+        let mut msg: String = String::new();
+        if reader.read_line(&mut msg).is_err() {
+            break;
+        }
+        let msg: &str = msg.trim();
+
+        if msg.is_empty() {
+            continue;
+        }
+
+        println!("{}: {}", username, msg);
+
+        for (client, client_stream) in clients.lock().unwrap().iter() {
+            if *client != username {
+                let mut client_writer: BufWriter<&TcpStream> = BufWriter::new(client_stream);
+                if client_writer.write_all(format!("{} said: {}\n", username, msg).as_bytes()).is_err() {
                     break;
                 }
-                stream.write(&read[0..n]).unwrap();
-            }
-            Err(err) => {
-                panic!("{}", err);
+                if client_writer.flush().is_err() {
+                    break;
+                }
             }
         }
     }
+
+    println!("{} disconnected", username);
+    clients.lock().unwrap().remove(&username);
 }
 
+
 fn main() {
-    let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
+    let clients: Arc<Mutex<HashMap<String, TcpStream>>> = Arc::new(Mutex::new(HashMap::new()));
+    let listener: TcpListener = TcpListener::bind("0.0.0.0:8080").unwrap();
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                thread::spawn(move || {
-                    handle_client(stream);
-                });
+                say_helo(&mut stream);
             }
-            Err(_) => {
-                println!("Error");
-            }
+            Err(e) => { /* connection failed */ }
         }
     }
+    Ok(());
+
+    println!("Server running on 0.0.0.0:8080");
+
+    for stream in listener.incoming() {
+        println!("incomming!\n");
+
+        let clients: Arc<Mutex<HashMap<String, TcpStream>>> = Arc::clone(&clients);
+
+        thread::spawn(move || {
+            handle_client(stream.unwrap(), clients);
+        });
+    }
 }
+
