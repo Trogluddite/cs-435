@@ -4,10 +4,6 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-fn say_helo(stream : &mut TcpStream){
-    stream.write_all(format!("{}", "plz to be giving your name: ").as_bytes());
-}
-
 fn handle_client(stream: TcpStream, clients: Arc<Mutex<HashMap<String, TcpStream>>>) {
     let mut reader: BufReader<&TcpStream> = BufReader::new(&stream);
 
@@ -56,21 +52,9 @@ fn main() {
     let clients: Arc<Mutex<HashMap<String, TcpStream>>> = Arc::new(Mutex::new(HashMap::new()));
     let listener: TcpListener = TcpListener::bind("0.0.0.0:8080").unwrap();
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                say_helo(&mut stream);
-            }
-            Err(e) => { /* connection failed */ }
-        }
-    }
-    Ok(());
-
     println!("Server running on 0.0.0.0:8080");
 
     for stream in listener.incoming() {
-        println!("incomming!\n");
-
         let clients: Arc<Mutex<HashMap<String, TcpStream>>> = Arc::clone(&clients);
 
         thread::spawn(move || {
