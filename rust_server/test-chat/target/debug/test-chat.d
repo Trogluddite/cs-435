@@ -1,1 +1,0 @@
-/Users/joeburchett/school/cs-435/rust_server/test-chat/target/debug/test-chat: /Users/joeburchett/school/cs-435/rust_server/test-chat/src/main.rs /Users/joeburchett/school/cs-435/rust_server/test-chat/src/server.rs
