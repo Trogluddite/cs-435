@@ -1,5 +1,5 @@
-use std::io::{BufReader,Write};
-use std::{env, result, thread};
+use std::io::Write;                 // later: BufReader
+use std::{result, thread};          // later: env
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::net::{TcpListener, TcpStream};
@@ -8,16 +8,16 @@ const SERVER_PORT:u16 = 5005;
 const SERVER_ADDRESS:&'static str = "0.0.0.0";
 
 struct MessageTypeMap{
-    Character: u8,
-    Game: u8,
-    Version: u8,
+    character: u8,
+    game: u8,
+    version: u8,
 }
 impl MessageTypeMap{
     fn new() -> MessageTypeMap{
         MessageTypeMap{
-            Character:  10,
-            Game:       11,
-            Version:    14,
+            character:  10,
+            game:       11,
+            version:    14,
         }
     }
 }
@@ -45,6 +45,7 @@ enum Message{
         desc_len: u16,
         game_desc: Vec<u8>,  //to be treated as characters
     },
+    #[allow(dead_code)]
     Version{
         author: Arc<TcpStream>,
         message_type: u8,
@@ -58,7 +59,7 @@ enum Message{
 type Result<T> = result::Result<T, ()>;
 
 fn main() -> Result<()> {
-    let args: Vec<String> = env::args().collect();
+    //let _args: Vec<String> = env::args().collect();
     // assuming static settings for now; check this later
     let address = format!("{}:{}",SERVER_ADDRESS, SERVER_PORT);
     let listener = TcpListener::bind(&address).map_err( |_err| {
@@ -112,7 +113,7 @@ fn handle_server(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<()> {
                 })?;
             }
             Message::Game{ author, message_type, initial_points, stat_limit, desc_len,  game_desc} => {
-                println!("Received Game message from: {:?}", author.peer_addr().unwrap());
+                println!("Received game message from: {:?}", author.peer_addr().unwrap());
                 let mut message: Vec<u8> = Vec::new();
                 message.push(message_type);
                 message.extend(initial_points.to_le_bytes());
@@ -149,9 +150,9 @@ fn handle_server(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<()> {
 
 fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()> {
     println!("handling client message");
-    let mut reader = BufReader::new(stream.as_ref());
-    let mut message_type = [0u8];
-    let mut bufr: Vec<u8> = Vec::new();
+    //let reader = BufReader::new(stream.as_ref());
+    //let message_type = [0u8];
+    //let bufr: Vec<u8> = Vec::new();
 
     if stream.peer_addr().is_err() {
         println!("Error: couldn't get client's peer address.");
@@ -163,7 +164,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
 
     let server_version = Message::Version{
         author: stream.clone(),
-        message_type: MessageTypeMap::new().Version,
+        message_type: MessageTypeMap::new().version,
         major_revision: 2,
         minor_revision: 3,
         ext_len: 0,
@@ -173,7 +174,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     let g_desc = String::from("Henlo, dis iz Lurk game kthx");
     let game_info = Message::Game{
         author: stream.clone(),
-        message_type: MessageTypeMap::new().Game,
+        message_type: MessageTypeMap::new().game,
         initial_points: 500,
         stat_limit: 300,
         desc_len: g_desc.len() as u16,
@@ -187,7 +188,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     name_c_array[..c_name.len()].copy_from_slice(c_name.as_bytes());
     let character_info = Message::Character {
         author: stream.clone(),
-        message_type: MessageTypeMap::new().Character,
+        message_type: MessageTypeMap::new().character,
         character_name: name_c_array,
         flags: 0b10000000,
         attack: 500,
@@ -205,14 +206,14 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     //TODO: listen-loop for stream
 
     message.send(server_version).map_err(|err| {
-        println!("couldn't send version message to client. Err was: {}", err);
+        println!("couldn't send Version message to client. Err was: {}", err);
         std::process::exit(1);
     })?;
     message.send(game_info).map_err(|err| {
-        println!("couldn't send game info to client. Err was: {}", err);
+        println!("couldn't send Game message to client. Err was: {}", err);
     })?;
     message.send(character_info).map_err(|err| {
-        println!("couldn't send character info to the client. Err was: {}", err);
+        println!("couldn't send Character message to the client. Err was: {}", err);
     })?;
 
     Ok(())
