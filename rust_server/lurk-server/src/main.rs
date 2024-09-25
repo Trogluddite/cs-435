@@ -5,6 +5,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::net::{TcpListener, TcpStream};
 
 const SERVER_PORT:u16 = 5005;
+const SERVER_ADDRESS:&'static str = "0.0.0.0";
 
 struct MessageTypeMap{
     Character: u8,
@@ -59,7 +60,7 @@ type Result<T> = result::Result<T, ()>;
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     // assuming static settings for now; check this later
-    let address = "0.0.0.0:5005";
+    let address = format!("{}:{}",SERVER_ADDRESS, SERVER_PORT);
     let listener = TcpListener::bind(&address).map_err( |_err| {
         println!("Error: could not bind to address {address}");
     })?;
