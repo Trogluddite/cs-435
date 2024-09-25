@@ -6,6 +6,34 @@ use std::net::{TcpListener, TcpStream};
 
 const SERVER_PORT:u16 = 5005;
 const SERVER_ADDRESS:&'static str = "0.0.0.0";
+const WELCOME:&'static str = "        
+       \\`-._           __
+            \\\\  `-..____,.'  `.
+             :`.         /    \\`.
+             :  )       :      : \\
+              ;'        '   ;  |  :
+              )..      .. .:.`.;  :
+             /::...  .:::...   ` ;
+             ; _ '    __        /:\\
+             `:o>   /\\o_>      ;:. `.
+            `-`.__ ;   __..--- /:.   \\
+            === \\_/   ;=====_.':.     ;
+             ,/'`--'...`--....        ;
+                  ;                    ;
+                .'                      ;
+              .'                        ;
+            .'     ..     ,      .       ;
+           :       ::..  /      ;::.     |
+          /      `.;::.  |       ;:..    ;
+         :         |:.   :       ;:.    ;
+         :         ::     ;:..   |.    ;
+          :       :;      :::....|     |
+          /\\     ,/ \\      ;:::::;     ;
+        .:. \\:..|    :     ; '.--|     ;
+       ::.  :''  `-.,,;     ;'   ;     ;
+    .-'. _.'\\      / `;      \\,__:      \\
+    `---'    `----'   ;      /    \\,.,,,/
+                       `----`              ";
 
 struct MessageTypeMap{
     accept:     u8, changeroom: u8, character:  u8, connection: u8,
@@ -246,8 +274,8 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
         message_type: MessageTypeMap::new().game,
         initial_points: 500,
         stat_limit: 300,
-        desc_len: g_desc.len() as u16,
-        game_desc: g_desc.as_bytes().to_vec(),
+        desc_len: WELCOME.len() as u16,
+        game_desc: WELCOME.as_bytes().to_vec(),
     };
 
     let c_desc = String::from("I am definitely not a plumber in search of a princess");
