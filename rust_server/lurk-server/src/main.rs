@@ -8,21 +8,33 @@ const SERVER_PORT:u16 = 5005;
 const SERVER_ADDRESS:&'static str = "0.0.0.0";
 
 struct MessageTypeMap{
-    character: u8,
-    game: u8,
-    version: u8,
+    accept:     u8, changeroom: u8, character:  u8, connection: u8,
+    error:      u8, fight:      u8, game:       u8, leave:      u8,
+    loot:       u8, message:    u8, room:       u8, start:      u8,
+    pvpfight:   u8, version:    u8,
 }
 impl MessageTypeMap{
     fn new() -> MessageTypeMap{
         MessageTypeMap{
-            character:  10,
-            game:       11,
-            version:    14,
+            accept:      8, changeroom:  2, character:  10, connection: 13,
+            error:       7, fight:       3, game:       11, leave:      12,
+            loot:        5, message:     1, room:        9, start:       6,
+            pvpfight:    4, version:    14,
         }
     }
 }
 
 enum Message{
+    Accept{
+        author:         Arc<TcpStream>,
+        message_type:   u8,
+        accepted_type:  u8,
+    },
+    ChangeRoom{
+        author:         Arc<TcpStream>,
+        message_type:   u8,
+        target_room:    u16,
+    },
     Character{
         author:         Arc<TcpStream>,
         message_type:   u8,
@@ -37,22 +49,76 @@ enum Message{
         desc_len:       u16,
         desc:           Vec<u8>,
     },
-    Game{
-        author: Arc<TcpStream>,
-        message_type: u8,
-        initial_points: u16,
-        stat_limit: u16,
-        desc_len: u16,
-        game_desc: Vec<u8>,  //to be treated as characters
+    Connection{
+        author:         Arc<TcpStream>,
+        message_type:   u8,
+        room_number:    u16,
+        room_name:      [u8; 32],
+        desc_len:       u16,
+        room_desc:      Vec<u8>,
     },
-    #[allow(dead_code)]
+    Error{
+        author:         Arc<TcpStream>,
+        message_type:   u8,
+        error_code:     u8,
+        messaage_len:   u16,
+        message:        Vec<u8>,
+    },
+    Fight{
+        author:         Arc<TcpStream>,
+        message_type:   u8,
+    },
+    Game{
+        author:         Arc<TcpStream>,
+        message_type:   u8,
+        initial_points: u16,
+        stat_limit:     u16,
+        desc_len:       u16,
+        game_desc:      Vec<u8>,  //to be treated as characters
+    },
+    Leave{
+        author:         Arc<TcpStream>,
+        message_type:   u8,
+    },
+    Loot{
+        author:         Arc<TcpStream>,
+        message_type:   u8,
+        target_name:    Vec<u8>,
+    },
+    Message{
+        author:         Arc<TcpStream>,
+        message_type:   u8,
+        message_len:    u16,
+        recipient_name: [u8; 32],
+        sender_name:    [u8; 30],
+        end_marker:     u16,
+        message:        Vec<u8>,
+    },
+    Room{
+        author:         Arc<TcpStream>,
+        message_type:   u8,
+        room_number:    u16,
+        room_name:      [u8; 32],
+        desc_len:       u16,
+        room_desc:      Vec<u8>,
+    },
+    Start{
+        author:         Arc<TcpStream>,
+        message_type:   u8,
+    },
+    PVPFight{
+        author:         Arc<TcpStream>,
+        message_type:   u8,
+        target_name:    [u8; 32],
+    },
+    #[allow(dead_code)] //for ext_len & ext_list
     Version{
-        author: Arc<TcpStream>,
-        message_type: u8,
+        author:         Arc<TcpStream>,
+        message_type:   u8,
         major_revision: u8,
         minor_revision: u8,
-        ext_len: u16,
-        ext_list: Vec<u8>,
+        ext_len:        u16,
+        ext_list:       Vec<u8>,
     },
 }
 
@@ -143,6 +209,9 @@ fn handle_server(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<()> {
                 author.as_ref().write_all(&message).map_err(|err|{
                     println!("couldn't send Character message to client, with error: {}", err);
                 })?;
+            }
+            _ => {
+                println!("Received unhandled message");
             }
         }
     }
