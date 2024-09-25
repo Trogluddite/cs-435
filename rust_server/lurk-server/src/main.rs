@@ -1,4 +1,4 @@
-use std::io::{BufReader,Write;
+use std::io::{BufReader,Write};
 use std::{env, result, thread};
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -59,7 +59,7 @@ type Result<T> = result::Result<T, ()>;
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     // assuming static settings for now; check this later
-    let address = "127.0.0.1:5005";
+    let address = "0.0.0.0:5005";
     let listener = TcpListener::bind(&address).map_err( |_err| {
         println!("Error: could not bind to address {address}");
     })?;
