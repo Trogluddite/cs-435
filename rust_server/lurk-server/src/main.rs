@@ -7,7 +7,7 @@ use std::net::{TcpListener, TcpStream};
 const SERVER_PORT:u16 = 5005;
 const SERVER_ADDRESS:&'static str = "0.0.0.0";
 const WELCOME:&'static str = "        
-       \\`-._           __
+           \\`-._           __
             \\\\  `-..____,.'  `.
              :`.         /    \\`.
              :  )       :      : \\
