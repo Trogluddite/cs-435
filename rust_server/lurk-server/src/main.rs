@@ -157,13 +157,13 @@ fn main() -> Result<()> {
     // assuming static settings for now; check this later
     let address = format!("{}:{}",SERVER_ADDRESS, SERVER_PORT);
     let listener = TcpListener::bind(&address).map_err( |_err| {
-        println!("Error: could not bind to address {address}");
+        println!("[SERVER MESSAGE]: Error: could not bind to address {address}");
     })?;
-    println!("running on socket: {address}");
+    println!("[SERVER MESSAGE]: running on socket: {address}");
 
     let (sender, receiver) = channel();
     let receiver = Arc::new(Mutex::new(receiver));  //shadow 'receiver' w/ ARC & mutex
-    thread::spawn(move || handle_server(receiver)); // spawn server thread
+    thread::spawn(move || handle_received_messages(receiver)); // spawn server thread
 
     //listen for incoming connections
     for stream in listener.incoming() {
@@ -171,7 +171,7 @@ fn main() -> Result<()> {
             Ok(stream) => {
                 let stream = Arc::new(stream);
                 let sender = sender.clone();
-                println!("New connection, spawning thread for client");
+                println!("[SERVER MESSAGE]: New connection, spawning thread for client {:?}", stream.peer_addr().unwrap());
                 thread::spawn(move || handle_client(stream, sender));
             }
             Err(e) => {
@@ -182,7 +182,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn handle_server(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<()> {
+fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<()> {
+    println!("[SERVER_MESSAGE]: handling incomming messages");
     loop{
         let rec = receiver.lock();
         let message = rec
@@ -246,7 +247,6 @@ fn handle_server(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<()> {
 }
 
 fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()> {
-    println!("handling client message");
     //let reader = BufReader::new(stream.as_ref());
     //let message_type = [0u8];
     //let bufr: Vec<u8> = Vec::new();
