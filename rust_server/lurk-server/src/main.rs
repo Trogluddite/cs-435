@@ -1,4 +1,4 @@
-use std::io::Write;                 // later: BufReader
+use std::io::{BufReader, Write};
 use std::{result, thread};          // later: env
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -239,6 +239,19 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
                     println!("couldn't send Character message to client, with error: {}", err);
                 })?;
             }
+            Message::Connection { author, message_type, room_number, room_name, desc_len, room_desc } => {
+                println!("Received connection message from: {:?}", author.peer_addr().unwrap());
+                let mut message: Vec<u8> = Vec::new();
+                message.push(message_type);
+                message.extend(room_number.to_le_bytes());
+                message.extend(room_name);
+                message.extend(desc_len.to_le_bytes());
+                message.extend(room_desc);
+
+                author.as_ref().write_all(&message).map_err(|err| {
+                    println!("Couldn't send connection message to client, with error {}", err);
+                })?;
+            }
             _ => {
                 println!("Received unhandled message");
             }
@@ -247,9 +260,9 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
 }
 
 fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()> {
-    //let reader = BufReader::new(stream.as_ref());
-    //let message_type = [0u8];
-    //let bufr: Vec<u8> = Vec::new();
+    let reader = BufReader::new(stream.as_ref());
+    let message_type = [0u8];
+    let bufr: Vec<u8> = Vec::new();
 
     if stream.peer_addr().is_err() {
         println!("Error: couldn't get client's peer address.");
@@ -268,7 +281,6 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
         ext_list: Vec::new(),
     };
 
-    let g_desc = String::from("Henlo, dis iz Lurk game kthx");
     let game_info = Message::Game{
         author: stream.clone(),
         message_type: MessageTypeMap::new().game,
@@ -298,9 +310,18 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
         desc: c_desc.as_bytes().to_vec(),
     };
 
-    //TODO: create game-state object
-    //TODO: create map objects
-    //TODO: listen-loop for stream
+    let r_desc = String::from("this is a room mkay");
+    let mut r_name_arr = [0u8; 32];
+    let r_name = String::from("MURDERSH3D");
+    r_name_arr[..r_name.len()].copy_from_slice(r_name.as_bytes());
+    let conn_info = Message::Connection { 
+        author: stream.clone(),
+        message_type: MessageTypeMap::new().connection,
+        room_number: 0,
+        room_name: r_name_arr,
+        desc_len: r_desc.len() as u16,
+        room_desc: r_desc.as_bytes().to_vec(),
+    };
 
     message.send(server_version).map_err(|err| {
         println!("couldn't send Version message to client. Err was: {}", err);
@@ -311,6 +332,9 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     })?;
     message.send(character_info).map_err(|err| {
         println!("couldn't send Character message to the client. Err was: {}", err);
+    })?;
+    message.send(conn_info).map_err(|err| {
+        println!("couldn't send Connection message to the client. Err was: {}", err);
     })?;
 
     Ok(())
