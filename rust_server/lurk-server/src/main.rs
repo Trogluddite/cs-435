@@ -1,4 +1,4 @@
-use std::io::{BufReader, Write};
+use std::io::{BufReader, Write, Read};
 use std::{result, thread};          // later: env
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -52,6 +52,7 @@ impl MessageTypeMap{
     }
 }
 
+#[derive(Debug)]
 enum Message{
     Accept{
         author:         Arc<TcpStream>,
@@ -182,6 +183,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+//thread receiver
 fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<()> {
     println!("[SERVER_MESSAGE]: handling incomming messages");
     loop{
@@ -196,7 +198,7 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
 
         match message{
             Message::Version{ author, message_type, major_revision, minor_revision, ext_len: _, ext_list: _} => {
-                println!("Received Version message from:  {:?}", author.peer_addr().unwrap());
+                println!("[MPSC RECEIVED] Version message from:  {:?}", author.peer_addr().unwrap());
                 let mut message: Vec<u8> = Vec::new();
                 message.push(message_type);
                 message.extend(major_revision.to_le_bytes());
@@ -204,11 +206,11 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
                 message.extend(0u16.to_le_bytes());
 
                 author.as_ref().write_all(&message).map_err(|err| {
-                    println!("Couldn't send Version message to client, with error: {}", err);
+                    eprintln!("Couldn't send Version message to client, with error: {}", err);
                 })?;
             }
             Message::Game{ author, message_type, initial_points, stat_limit, desc_len,  game_desc} => {
-                println!("Received game message from: {:?}", author.peer_addr().unwrap());
+                println!("[MPSC RECEIVED] game message from: {:?}", author.peer_addr().unwrap());
                 let mut message: Vec<u8> = Vec::new();
                 message.push(message_type);
                 message.extend(initial_points.to_le_bytes());
@@ -221,7 +223,7 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
                 })?;
             }
             Message::Character { author, message_type, character_name, flags, attack, defense, regen, health, gold, curr_room, desc_len, desc } => {
-                println!("received Character message from: {:?}",author.peer_addr().unwrap());
+                println!("[MPSC RECEIVED] Character message from: {:?}",author.peer_addr().unwrap());
                 let mut message: Vec<u8> = Vec::new();
                 message.push(message_type);
                 message.extend(character_name);
@@ -240,7 +242,7 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
                 })?;
             }
             Message::Connection { author, message_type, room_number, room_name, desc_len, room_desc } => {
-                println!("Received connection message from: {:?}", author.peer_addr().unwrap());
+                println!("[MPSC RECEIVED] connection message from: {:?}", author.peer_addr().unwrap());
                 let mut message: Vec<u8> = Vec::new();
                 message.push(message_type);
                 message.extend(room_number.to_le_bytes());
@@ -253,25 +255,23 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
                 })?;
             }
             _ => {
-                println!("Received unhandled message");
+                println!("[RECEIVED] unhandled message");
             }
         }
     }
 }
 
+//tcp receiver
 fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()> {
-    let reader = BufReader::new(stream.as_ref());
-    let message_type = [0u8];
-    let bufr: Vec<u8> = Vec::new();
-
     if stream.peer_addr().is_err() {
         println!("Error: couldn't get client's peer address.");
         return Err(());
     }
     else{
-        println!("New connection from {:?}", stream.peer_addr().unwrap());
+        println!("New game connection from {:?}", stream.peer_addr().unwrap());
     }
 
+    /****** <Preamble>: Shove a version & description at every client *****/
     let server_version = Message::Version{
         author: stream.clone(),
         message_type: MessageTypeMap::new().version,
@@ -280,6 +280,11 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
         ext_len: 0,
         ext_list: Vec::new(),
     };
+    println!("[MPSC SEND] Version message from {:?}", thread::current().id());
+    message.send(server_version).map_err(|err| {
+        println!("couldn't send Version message to client. Err was: {}", err);
+        std::process::exit(1);
+    })?;
 
     let game_info = Message::Game{
         author: stream.clone(),
@@ -289,7 +294,28 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
         desc_len: WELCOME.len() as u16,
         game_desc: WELCOME.as_bytes().to_vec(),
     };
+    println!("[MPSC SEND] Game message from {:?}", thread::current().id());
+    message.send(game_info).map_err(|err| {
+        println!("couldn't send Game message to client. Err was: {}", err);
+    })?;
 
+    /****** </Preamble>: Shove a version & description at every client *****/
+
+    /***** <Main loop> read from stream & react to messaages ******/
+    let mut reader = BufReader::new(stream.as_ref());
+    let mut message_type = [0u8];
+    let mut bufr: Vec<u8> = Vec::new();
+
+    loop{
+        reader.read_exact(&mut message_type).map_err(|err|{
+            eprintln!("[GAME SERVER]: couldn't receive message; assuming client disconnect. Error wasa {:?}", err);
+            let _ = Message::Leave{
+                author: stream.clone(),
+                message_type: MessageTypeMap::new().leave,
+            };
+        })?;
+
+    /*
     let c_desc = String::from("I am definitely not a plumber in search of a princess");
     let c_name = String::from("ItsaMe,Oiram"); //placeholder name, definitely not Mario
     let mut name_c_array = [0u8; 32];           // pre-pad name array
@@ -323,19 +349,19 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
         room_desc: r_desc.as_bytes().to_vec(),
     };
 
-    message.send(server_version).map_err(|err| {
-        println!("couldn't send Version message to client. Err was: {}", err);
-        std::process::exit(1);
-    })?;
-    message.send(game_info).map_err(|err| {
-        println!("couldn't send Game message to client. Err was: {}", err);
-    })?;
+
+    println!("[SENT] Character to {:?}", stream.peer_addr().unwrap());
     message.send(character_info).map_err(|err| {
         println!("couldn't send Character message to the client. Err was: {}", err);
     })?;
+
+    println!("[SENT] Conn to {:?}", stream.peer_addr().unwrap());
     message.send(conn_info).map_err(|err| {
         println!("couldn't send Connection message to the client. Err was: {}", err);
-    })?;
+    })?;*/
 
-    Ok(())
+
+        bufr.clear();
+    }
+    //Ok(())
 }
