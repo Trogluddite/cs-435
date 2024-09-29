@@ -306,6 +306,8 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     let mut message_type = [0u8];
     let mut bufr: Vec<u8> = Vec::new();
 
+    let mut game_started : bool = false;
+    let mut accepted_character : bool = false;
     loop{
         reader.read_exact(&mut message_type).map_err(|err|{
             eprintln!("[GAME SERVER]: couldn't receive message; assuming client disconnect. Error wasa {:?}", err);
@@ -315,6 +317,61 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
             };
         })?;
 
+        // to be shaadowed in match arms
+        let message_to_send: Message;
+
+        let accept_msg = MessageTypeMap::new().accept;
+        let changeroom_msg = MessageTypeMap::new().changeroom;
+        let connection_msg = MessageTypeMap::new().connection;
+        let character_msg = MessageTypeMap::new().character;
+        let error_msg = MessageTypeMap::new().error;
+        let fight_msg = MessageTypeMap::new().fight;
+        let game_msg = MessageTypeMap::new().game;
+        let leave_msg = MessageTypeMap::new().leave;
+        let loot_msg = MessageTypeMap::new().loot;
+        let message_msg = MessageTypeMap::new().messsage;
+        let room_msg = MessageTypeMap::new().room;
+        let start_msg = MessageTypeMap::new().start;
+        let pvpfight_msg = MessageTypeMap::new().pvpfight;
+        let version_msg = MessageTypeMap::new().version;
+
+       
+        println!("msg type is: {:?}", message_type[0]);
+        match message_type[0] {
+            /*accept_msg => {
+                println!("accept msg");
+                continue;
+            }*/
+            character_msg => {
+                let c_desc = String::from("I am definitely not a plumber in search of a princess");
+                let c_name = String::from("ItsaMe,Oiram"); //placeholder name, definitely not Mario
+                let mut name_c_array = [0u8; 32];           // pre-pad name array
+                // shove whatever will fit into name_c_array
+                name_c_array[..c_name.len()].copy_from_slice(c_name.as_bytes());
+                let character_info = Message::Character {
+                    author: stream.clone(),
+                    message_type: MessageTypeMap::new().character,
+                    character_name: name_c_array,
+                    flags: 0b10000000,
+                    attack: 500,
+                    defense: 500,
+                    regen: 500,
+                    health: 500,
+                    gold: 12,
+                    curr_room: 0,
+                    desc_len: c_desc.len() as u16,
+                    desc: c_desc.as_bytes().to_vec(),
+                };
+
+                message.send(character_info).map_err(|err|{
+                    eprintln!("couldn't do the thing, err was: {:?}",err);
+                })?;
+                continue;
+            }
+
+            _ => {}
+        }
+ 
     /*
     let c_desc = String::from("I am definitely not a plumber in search of a princess");
     let c_name = String::from("ItsaMe,Oiram"); //placeholder name, definitely not Mario
