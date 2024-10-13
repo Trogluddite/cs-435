@@ -35,24 +35,26 @@ const WELCOME:&'static str = "
     `---'    `----'   ;      /    \\,.,,,/
                        `----`              ";
 
-struct MessageTypeMap{
-    accept:     u8, changeroom: u8, character:  u8, connection: u8,
-    error:      u8, fight:      u8, game:       u8, leave:      u8,
-    loot:       u8, message:    u8, room:       u8, start:      u8,
-    pvpfight:   u8, version:    u8,
-}
-impl MessageTypeMap{
-    fn new() -> MessageTypeMap{
-        MessageTypeMap{
-            accept:      8, changeroom:  2, character:  10, connection: 13,
-            error:       7, fight:       3, game:       11, leave:      12,
-            loot:        5, message:     1, room:        9, start:       6,
-            pvpfight:    4, version:    14,
-        }
-    }
+struct MessageType;
+impl MessageType{
+    const ACCEPT: u8 = 8;
+    const CHANGEROOM: u8 = 2;
+    const CHARACTER: u8 = 10;
+    const CONNECTION: u8 = 13;
+    const ERROR: u8 = 7;
+    const FIGHT: u8 = 3;
+    const GAME: u8 = 11;
+    const LEAVE: u8 = 12;
+    const LOOT: u8 = 5;
+    const MESSAGE: u8 = 1;
+    const ROOM: u8 = 9;
+    const START: u8 = 6;
+    const PVPFIGHT: u8 = 4;
+    const VERSION: u8 = 14;
 }
 
 #[derive(Debug)]
+#[allow(dead_code)] //FIXME: later
 enum Message{
     Accept{
         author:         Arc<TcpStream>,
@@ -140,7 +142,6 @@ enum Message{
         message_type:   u8,
         target_name:    [u8; 32],
     },
-    #[allow(dead_code)] //for ext_len & ext_list
     Version{
         author:         Arc<TcpStream>,
         message_type:   u8,
@@ -151,6 +152,7 @@ enum Message{
     },
 }
 
+#[allow(dead_code)] //FIXME later
 struct Character{
     conn:       Arc<TcpStream>,
     name:       String,
@@ -314,7 +316,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     /****** <Preamble>: Shove a version & description at every client *****/
     let server_version = Message::Version{
         author: stream.clone(),
-        message_type: MessageTypeMap::new().version,
+        message_type: MessageType::VERSION,
         major_revision: 2,
         minor_revision: 3,
         ext_len: 0,
@@ -328,7 +330,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
 
     let game_info = Message::Game{
         author: stream.clone(),
-        message_type: MessageTypeMap::new().game,
+        message_type: MessageType::GAME,
         initial_points: 500,
         stat_limit: 300,
         desc_len: WELCOME.len() as u16,
@@ -346,48 +348,26 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     let mut message_type = [0u8];
     let mut bufr: Vec<u8> = Vec::new();
 
-    let mut game_started : bool = false;
-    let mut accepted_character : bool = false;
     loop{
         reader.read_exact(&mut message_type).map_err(|err|{
             eprintln!("[GAME SERVER]: couldn't receive message; assuming client disconnect. Error wasa {:?}", err);
             let _ = Message::Leave{
                 author: stream.clone(),
-                message_type: MessageTypeMap::new().leave,
+                message_type: MessageType::LEAVE,
             };
         })?;
 
         // to be shaadowed in match arms
-        let message_to_send: Message;
+        //let message_to_send: Message;
 
-        let accept_msg = MessageTypeMap::new().accept;
-        let changeroom_msg = MessageTypeMap::new().changeroom;
-        let connection_msg = MessageTypeMap::new().connection;
-        let character_msg = MessageTypeMap::new().character;
-        let error_msg = MessageTypeMap::new().error;
-        let fight_msg = MessageTypeMap::new().fight;
-        let game_msg = MessageTypeMap::new().game;
-        let leave_msg = MessageTypeMap::new().leave;
-        let loot_msg = MessageTypeMap::new().loot;
-        let message_msg = MessageTypeMap::new().message;
-        let room_msg = MessageTypeMap::new().room;
-        let start_msg = MessageTypeMap::new().start;
-        let pvpfight_msg = MessageTypeMap::new().pvpfight;
-        let version_msg = MessageTypeMap::new().version;
-
-       
-        println!("msg type is: {:?}", message_type[0]);
-
-        let m_type_map = MessageTypeMap::new();
         match message_type[0] {
             /*accept_msg => {
                 println!("accept msg");
                 continue;
             }*/
 
-            {m_type_map.character} => {
-            //(MessageTypeMap::new().character) => {
-            //character_msg => {
+            MessageType::CHARACTER => {
+                println!("matched a character message");
                 let mut message_data = [0u8; 47]; // character message is 48 bytees;
                 reader.read_exact(&mut message_data).map_err(|err|{
                     println!("[GAME SERVER] Could not read character message; error was {err}");
@@ -421,6 +401,23 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 println!("[GAME SERVER] player {c_name} connected");
             }
 
+            MessageType::START => {
+                println!("got a start message");
+            }
+
+            MessageType::ACCEPT => {}
+            MessageType::CHANGEROOM => {}
+            MessageType::CONNECTION => {}
+            MessageType::ERROR => {}
+            MessageType::FIGHT => {}
+            MessageType::GAME => {}
+            MessageType::LEAVE => {}
+            MessageType::LOOT => {}
+            MessageType::MESSAGE => {}
+            MessageType::ROOM => {}
+            MessageType::PVPFIGHT => {}
+            MessageType::VERSION => {}
+
             _ => {}
         }
  
@@ -432,7 +429,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     name_c_array[..c_name.len()].copy_from_slice(c_name.as_bytes());
     let character_info = Message::Character {
         author: stream.clone(),
-        message_type: MessageTypeMap::new().character,
+        message_type: MessageType::new().character,
         character_name: name_c_array,
         flags: 0b10000000,
         attack: 500,
@@ -451,7 +448,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     r_name_arr[..r_name.len()].copy_from_slice(r_name.as_bytes());
     let conn_info = Message::Connection { 
         author: stream.clone(),
-        message_type: MessageTypeMap::new().connection,
+        message_type: MessageType::new().connection,
         room_number: 0,
         room_name: r_name_arr,
         desc_len: r_desc.len() as u16,
@@ -486,7 +483,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 name_c_array[..c_name.len()].copy_from_slice(c_name.as_bytes());
                 let character_info = Message::Character {
                     author: stream.clone(),
-                    message_type: MessageTypeMap::new().character,
+                    message_type: MessageType::new().character,
                     character_name: name_c_array,
                     flags: 0b10000000,
                     attack: 500,
