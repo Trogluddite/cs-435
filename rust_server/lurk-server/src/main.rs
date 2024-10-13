@@ -377,12 +377,17 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
 
        
         println!("msg type is: {:?}", message_type[0]);
+
+        let m_type_map = MessageTypeMap::new();
         match message_type[0] {
             /*accept_msg => {
                 println!("accept msg");
                 continue;
             }*/
-            character_msg => {
+
+            {m_type_map.character} => {
+            //(MessageTypeMap::new().character) => {
+            //character_msg => {
                 let mut message_data = [0u8; 47]; // character message is 48 bytees;
                 reader.read_exact(&mut message_data).map_err(|err|{
                     println!("[GAME SERVER] Could not read character message; error was {err}");
