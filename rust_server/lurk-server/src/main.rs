@@ -151,6 +151,37 @@ enum Message{
     },
 }
 
+struct Character{
+    conn:       Arc<TcpStream>,
+    name:       String,
+    is_active:  bool,
+    flags:      u8,
+    attack:     u16,
+    defense:    u16,
+    regen:      u16,
+    health:     i16,
+    gold:       u16,
+    curr_room:  u16,
+    desc:       String,
+}
+impl Character{
+    fn new(conn: Arc<TcpStream>, name: String, desc: String) -> Character{
+        Character{
+            conn,
+            name,
+            desc,
+            is_active : true,
+            flags: 0xFF,
+            attack: 50,
+            defense: 50,
+            regen: 100,
+            health: 100,
+            gold: 0,
+            curr_room: 0,
+        }
+    }
+}
+
 type Result<T> = result::Result<T, ()>;
 
 fn main() -> Result<()> {
@@ -263,6 +294,15 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
 
 //tcp receiver
 fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()> {
+    /***************** < server state params> *****************/
+    // these will be defaults for each connecting client
+    let initial_c_point_limit : u16 = 300;
+    let initial_c_stat_limit : u16 = 500;
+    let mut game_started : bool = false;
+    let mut player_joined : bool = false;
+    /***************** < server state params> *****************/
+    let t_character : Character = Character::new(stream.clone(), String::new(), String::new());
+
     if stream.peer_addr().is_err() {
         println!("Error: couldn't get client's peer address.");
         return Err(());
@@ -329,7 +369,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
         let game_msg = MessageTypeMap::new().game;
         let leave_msg = MessageTypeMap::new().leave;
         let loot_msg = MessageTypeMap::new().loot;
-        let message_msg = MessageTypeMap::new().messsage;
+        let message_msg = MessageTypeMap::new().message;
         let room_msg = MessageTypeMap::new().room;
         let start_msg = MessageTypeMap::new().start;
         let pvpfight_msg = MessageTypeMap::new().pvpfight;
@@ -343,30 +383,37 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 continue;
             }*/
             character_msg => {
-                let c_desc = String::from("I am definitely not a plumber in search of a princess");
-                let c_name = String::from("ItsaMe,Oiram"); //placeholder name, definitely not Mario
-                let mut name_c_array = [0u8; 32];           // pre-pad name array
-                // shove whatever will fit into name_c_array
-                name_c_array[..c_name.len()].copy_from_slice(c_name.as_bytes());
-                let character_info = Message::Character {
-                    author: stream.clone(),
-                    message_type: MessageTypeMap::new().character,
-                    character_name: name_c_array,
-                    flags: 0b10000000,
-                    attack: 500,
-                    defense: 500,
-                    regen: 500,
-                    health: 500,
-                    gold: 12,
-                    curr_room: 0,
-                    desc_len: c_desc.len() as u16,
-                    desc: c_desc.as_bytes().to_vec(),
-                };
-
-                message.send(character_info).map_err(|err|{
-                    eprintln!("couldn't do the thing, err was: {:?}",err);
+                let mut message_data = [0u8; 47]; // character message is 48 bytees;
+                reader.read_exact(&mut message_data).map_err(|err|{
+                    println!("[GAME SERVER] Could not read character message; error was {err}");
                 })?;
-                continue;
+
+                let c_name = String::from_utf8_lossy(&message_data[1..31]);
+                let flags    : u8 = message_data[32];
+                let attack   : u16 = u16::from_le_bytes([message_data[33], message_data[34]]);
+                let defense  : u16 = u16::from_le_bytes([message_data[35], message_data[36]]);
+                let regen    : u16 = u16::from_le_bytes([message_data[37], message_data[38]]);
+                let health   : i16 = i16::from_le_bytes([message_data[39], message_data[40]]);
+                let gold     : u16 = u16::from_le_bytes([message_data[41], message_data[42]]);
+                let room     : u16 = u16::from_le_bytes([message_data[43], message_data[44]]);
+                let desc_len : usize = u16::from_le_bytes([message_data[45], message_data[46]]) as usize;
+                let mut desc : Vec<u8> = message_data[47..(47 + desc_len)].to_vec();
+                reader.read_exact(&mut desc).map_err(|err|{
+                    println!("[GAME SERVER] Could not read description; error was {err}");
+                })?;
+
+                println!("name: {c_name}");
+                println!("flags: {:#010b}", flags);
+                println!("attack: {attack}");
+                println!("defense: {defense}");
+                println!("regen: {regen}");
+                println!("health: {health}");
+                println!("gold: {gold}");
+                println!("room: {room}");
+                println!("desc_len: {desc_len}");
+                let s_desc = String::from_utf8_lossy(&desc);
+                println!("Description: {s_desc}");
+                println!("[GAME SERVER] player {c_name} connected");
             }
 
             _ => {}
@@ -422,3 +469,36 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     }
     //Ok(())
 }
+
+
+/*
+* send character  message example
+*
+                let c_desc = String::from("I am definitely not a plumber in search of a princess");
+                let c_name = String::from("ItsaMe,Oiram"); //placeholder name, definitely not Mario
+                let mut name_c_array = [0u8; 32];           // pre-pad name array
+                // shove whatever will fit into name_c_array
+                name_c_array[..c_name.len()].copy_from_slice(c_name.as_bytes());
+                let character_info = Message::Character {
+                    author: stream.clone(),
+                    message_type: MessageTypeMap::new().character,
+                    character_name: name_c_array,
+                    flags: 0b10000000,
+                    attack: 500,
+                    defense: 500,
+                    regen: 500,
+                    health: 500,
+                    gold: 12,
+                    curr_room: 0,
+                    desc_len: c_desc.len() as u16,
+                    desc: c_desc.as_bytes().to_vec(),
+                };
+
+                message.send(character_info).map_err(|err|{
+                    eprintln!("couldn't do the thing, err was: {:?}",err);
+                })?;
+                continue;
+            }
+
+*/
+
