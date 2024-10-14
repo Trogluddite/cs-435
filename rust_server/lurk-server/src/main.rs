@@ -37,20 +37,46 @@ const WELCOME:&'static str = "
 
 struct MessageType;
 impl MessageType{
-    const ACCEPT: u8 = 8;
-    const CHANGEROOM: u8 = 2;
-    const CHARACTER: u8 = 10;
-    const CONNECTION: u8 = 13;
-    const ERROR: u8 = 7;
-    const FIGHT: u8 = 3;
-    const GAME: u8 = 11;
-    const LEAVE: u8 = 12;
-    const LOOT: u8 = 5;
-    const MESSAGE: u8 = 1;
-    const ROOM: u8 = 9;
-    const START: u8 = 6;
-    const PVPFIGHT: u8 = 4;
-    const VERSION: u8 = 14;
+    const ACCEPT:       u8 = 8;
+    const CHANGEROOM:   u8 = 2;
+    const CHARACTER:    u8 = 10;
+    const CONNECTION:   u8 = 13;
+    const ERROR:        u8 = 7;
+    const FIGHT:        u8 = 3;
+    const GAME:         u8 = 11;
+    const LEAVE:        u8 = 12;
+    const LOOT:         u8 = 5;
+    const MESSAGE:      u8 = 1;
+    const ROOM:         u8 = 9;
+    const START:        u8 = 6;
+    const PVPFIGHT:     u8 = 4;
+    const VERSION:      u8 = 14;
+}
+
+struct ErrorType;
+#[allow(dead_code)] //FIXME: later
+impl ErrorType{
+    const OTHER:        u8 = 0;
+    const BAD_ROOM:     u8 = 1;
+    const PLAYER_EXISTS:u8 = 2;
+    const BAD_MONSTER:  u8 = 3;
+    const STAT_ERROR:   u8 = 4;
+    const NOT_READY:    u8 = 5;
+    const NO_TARGET:    u8 = 6;
+    const NO_FIGHT:     u8 = 7;
+    const PVP_DISABLED: u8 = 8;
+}
+
+struct PlayerFlags;
+#[allow(dead_code)] //FIXME: later
+impl PlayerFlags{
+    const IS_ALIVE:     u8 = 0b10000000;
+    const JOIN_BATTLE:  u8 = 0b01000000;
+    const IS_MONSTER:   u8 = 0b00100000;
+    const IS_STARTED:   u8 = 0b00010000;
+    const IS_READY:     u8 = 0b00001000;
+    const ALL_FLAGS_SET:u8 = 0b11111111;
+    const NO_FLAGS_SET: u8 = 0b00000000;
 }
 
 #[derive(Debug)]
@@ -298,12 +324,12 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
 fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()> {
     /***************** < server state params> *****************/
     // these will be defaults for each connecting client
-    let initial_c_point_limit : u16 = 300;
-    let initial_c_stat_limit : u16 = 500;
+    let stat_limit : u16 = 5000;
+    let initial_points : u16 = 300;
     let mut game_started : bool = false;
     let mut player_joined : bool = false;
     /***************** < server state params> *****************/
-    let t_character : Character = Character::new(stream.clone(), String::new(), String::new());
+    let mut character : Character = Character::new(stream.clone(), String::new(), String::new());
 
     if stream.peer_addr().is_err() {
         println!("Error: couldn't get client's peer address.");
@@ -331,8 +357,8 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     let game_info = Message::Game{
         author: stream.clone(),
         message_type: MessageType::GAME,
-        initial_points: 500,
-        stat_limit: 300,
+        initial_points,
+        stat_limit,
         desc_len: WELCOME.len() as u16,
         game_desc: WELCOME.as_bytes().to_vec(),
     };
@@ -361,11 +387,6 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
         //let message_to_send: Message;
 
         match message_type[0] {
-            /*accept_msg => {
-                println!("accept msg");
-                continue;
-            }*/
-
             MessageType::CHARACTER => {
                 println!("matched a character message");
                 let mut message_data = [0u8; 47]; // character message is 48 bytees;
@@ -373,7 +394,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                     println!("[GAME SERVER] Could not read character message; error was {err}");
                 })?;
 
-                let c_name = String::from_utf8_lossy(&message_data[1..31]);
+                let c_name   : String = String::from_utf8_lossy(&message_data[1..31]).to_string();
                 let flags    : u8 = message_data[32];
                 let attack   : u16 = u16::from_le_bytes([message_data[33], message_data[34]]);
                 let defense  : u16 = u16::from_le_bytes([message_data[35], message_data[36]]);
@@ -387,6 +408,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                     println!("[GAME SERVER] Could not read description; error was {err}");
                 })?;
 
+                //FIXME: these are for debugging i/o; remove later
                 println!("name: {c_name}");
                 println!("flags: {:#010b}", flags);
                 println!("attack: {attack}");
@@ -398,7 +420,59 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 println!("desc_len: {desc_len}");
                 let s_desc = String::from_utf8_lossy(&desc);
                 println!("Description: {s_desc}");
+
                 println!("[GAME SERVER] player {c_name} connected");
+
+                //notify client if supplied stats exceed maximum
+                let points = attack + defense + regen;
+                if points > initial_points {
+                    println!("[GAME SERVER] Player connected with stats exceeding max value of {stat_limit}; returning error");
+                    let estr : String = String::from("Error: stats set too high; Attack, Defense, and Regen should not exceed {stat_limit}");
+                    let emsg = Message::Error {
+                        author: stream.clone(),
+                        message_type: MessageType::ERROR,
+                        error_code: ErrorType::STAT_ERROR,
+                        messaage_len: estr.len() as u16,
+                        message: estr.into_bytes(),
+                    };
+                    message.send(emsg).map_err(|err| {
+                        println!("Could not send error message to client {c_name}; Error was {err}");
+                    })?;
+                };
+
+                //set stats & return character message
+                if flags == PlayerFlags::ALL_FLAGS_SET || flags == PlayerFlags::NO_FLAGS_SET {
+                    character.flags = PlayerFlags::IS_ALIVE | PlayerFlags::IS_READY;
+                }
+                //TODO: Handle reserved flags set??
+                else{
+                    character.flags = flags
+                }
+                character.name = if c_name == "" {String::from("DEFAULT MEAT")} else {c_name};
+                character.desc = String::from_utf8_lossy(&desc).to_string();
+                character.is_active = true;
+                character.attack = attack;
+                character.defense = defense;
+                character.regen = regen;
+                character.health = health;
+                character.gold = gold;
+                character.curr_room = 0;
+
+                player_joined = true;
+                let c_msg = Message::Character {
+                    author: stream.clone(),
+                    message_type: MessageType::CHARACTER,
+                    character_name: character.name.chars().collect()[0..32],
+                    flags: character.flags,
+                    attack: character.attack,
+                    defense: character.defense,
+                    regen: character.regen,
+                    health: character.health,
+                    gold: character.gold,
+                    curr_room: character.curr_room,
+                    desc_len: desc_len as u16,
+                    desc,
+                };
             }
 
             MessageType::START => {
