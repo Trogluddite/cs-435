@@ -1,0 +1,9 @@
+[SERVER] Got a C_SET_VALUE message (byte with value 1)
+[SERVER] New sheep price set to 200.0
+[SERVER] Got a C_CONV_S_TO_D message (byte with value 2)
+[SERVER] Sent total cost ($70000) to client
+[SERVER] got a C_CONV_D_TO_S message (byte with value 3)
+[SERVER] sent number of sheep (350) to client
+Couldn't read type from buffer; error was failed to fill whole buffer
+[SERVER] Got an unknown message type
+

@@ -1,0 +1,19 @@
+joe@Joes-Work-Macbook hw4_rust % ./client.py isoptera.lcsc.edu 5006
+enter request type by number: (1) set value, (2) convert sheep to dollars, (3) convert dollars to sheep: 1
+Request type is: 1
+Set the dollar value of a sheep: 200
+It was OK
+joe@Joes-Work-Macbook hw4_rust % ./client.py isoptera.lcsc.edu 5006
+enter request type by number: (1) set value, (2) convert sheep to dollars, (3) convert dollars to sheep: 2
+Request type is: 2
+converting sheep to dollars; how many sheep do you have? 350
+You now have $70000.0 dollhairs
+joe@Joes-Work-Macbook hw4_rust % ./client.py isoptera.lcsc.edu 5006
+enter request type by number: (1) set value, (2) convert sheep to dollars, (3) convert dollars to sheep: 3
+Request type is: 3
+converting dollhairs to sheepz; how many dollhairs do you have? 70000
+You now have approximately 350.0 sheepz
+joe@Joes-Work-Macbook hw4_rust % ./client.py isoptera.lcsc.edu 5006
+enter request type by number: (1) set value, (2) convert sheep to dollars, (3) convert dollars to sheep: squirrel poop
+Request type is: squirrel poop
+Sorry, I didn't understand that input. Try running me again.
