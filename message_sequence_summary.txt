@@ -1,0 +1,23 @@
+S-> server sends 
+<-C client sends 
+
+Client connect & Game setup messages
+S-> game message
+S-> version message 
+<-C character message (create character)
+<-C start 
+
+
+Status messages: 
+S-> Message (can be sent at any time)
+S-> Accept (or error)
+S-> Error (or accept)
+
+Gameplay messages
+S-> room, Character (for player and all other characters in the room)
+<-C Change Room 
+S-> Connection
+<-C fight 
+<-C PVP Fight
+<-C Loot
+<-C Leave
