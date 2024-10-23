@@ -383,30 +383,30 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
             };
         })?;
 
-        // to be shaadowed in match arms
-        //let message_to_send: Message;
-
         match message_type[0] {
             MessageType::CHARACTER => {
                 println!("matched a character message");
-                let mut message_data = [0u8; 47]; // character message is 48 bytees;
+                let mut message_data = [0u8; 48]; // character message is 48 bytees;
                 reader.read_exact(&mut message_data).map_err(|err|{
                     println!("[GAME SERVER] Could not read character message; error was {err}");
                 })?;
 
-                let c_name   : String = String::from_utf8_lossy(&message_data[1..31]).to_string();
-                let flags    : u8 = message_data[32];
-                let attack   : u16 = u16::from_le_bytes([message_data[33], message_data[34]]);
-                let defense  : u16 = u16::from_le_bytes([message_data[35], message_data[36]]);
-                let regen    : u16 = u16::from_le_bytes([message_data[37], message_data[38]]);
-                let health   : i16 = i16::from_le_bytes([message_data[39], message_data[40]]);
-                let gold     : u16 = u16::from_le_bytes([message_data[41], message_data[42]]);
-                let room     : u16 = u16::from_le_bytes([message_data[43], message_data[44]]);
-                let desc_len : usize = u16::from_le_bytes([message_data[45], message_data[46]]) as usize;
-                let mut desc : Vec<u8> = message_data[47..(47 + desc_len)].to_vec();
-                reader.read_exact(&mut desc).map_err(|err|{
-                    println!("[GAME SERVER] Could not read description; error was {err}");
+                let c_name   : String = String::from_utf8_lossy(&message_data[1..33]).to_string();
+                let flags    : u8 = message_data[33];
+                let attack   : u16 = u16::from_le_bytes([message_data[34], message_data[35]]);
+                let defense  : u16 = u16::from_le_bytes([message_data[36], message_data[37]]);
+                let regen    : u16 = u16::from_le_bytes([message_data[38], message_data[39]]);
+                let health   : i16 = i16::from_le_bytes([message_data[40], message_data[41]]);
+                let gold     : u16 = u16::from_le_bytes([message_data[42], message_data[43]]);
+                let room     : u16 = u16::from_le_bytes([message_data[44], message_data[45]]);
+                let desc_len : usize = u16::from_le_bytes([message_data[46], message_data[47]]) as usize;
+
+                let  desc = vec![0u8; desc_len];
+                /*
+                let len = reader.read_exact(&mut desc).map_err(|err|{
+                    println!("[GAME SERVER] Could not read character description; error was {err}");
                 })?;
+                println!("len: {:?}", len);*/
 
                 //FIXME: these are for debugging i/o; remove later
                 println!("name: {c_name}");
@@ -438,6 +438,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                     message.send(emsg).map_err(|err| {
                         println!("Could not send error message to client {c_name}; Error was {err}");
                     })?;
+                    continue;
                 };
 
                 //set stats & return character message
@@ -459,10 +460,10 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 character.curr_room = 0;
 
                 player_joined = true;
-                let c_msg = Message::Character {
+                /*let c_msg = Message::Character {
                     author: stream.clone(),
                     message_type: MessageType::CHARACTER,
-                    character_name: character.name.chars().collect()[0..32],
+                    character_name: character.name.as_bytes()[0..32];
                     flags: character.flags,
                     attack: character.attack,
                     defense: character.defense,
@@ -472,7 +473,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                     curr_room: character.curr_room,
                     desc_len: desc_len as u16,
                     desc,
-                };
+                };*/
             }
 
             MessageType::START => {
