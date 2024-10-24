@@ -386,27 +386,29 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
         match message_type[0] {
             MessageType::CHARACTER => {
                 println!("matched a character message");
-                let mut message_data = [0u8; 48]; // character message is 48 bytees;
+                let mut message_data = [0u8; 47]; // 47 bytes + 1 (message type already read)
                 reader.read_exact(&mut message_data).map_err(|err|{
                     println!("[GAME SERVER] Could not read character message; error was {err}");
                 })?;
 
-                let c_name   : String = String::from_utf8_lossy(&message_data[1..33]).to_string();
-                let flags    : u8 = message_data[33];
-                let attack   : u16 = u16::from_le_bytes([message_data[34], message_data[35]]);
-                let defense  : u16 = u16::from_le_bytes([message_data[36], message_data[37]]);
-                let regen    : u16 = u16::from_le_bytes([message_data[38], message_data[39]]);
-                let health   : i16 = i16::from_le_bytes([message_data[40], message_data[41]]);
-                let gold     : u16 = u16::from_le_bytes([message_data[42], message_data[43]]);
-                let room     : u16 = u16::from_le_bytes([message_data[44], message_data[45]]);
-                let desc_len : usize = u16::from_le_bytes([message_data[46], message_data[47]]) as usize;
+                // note on ranges -- we've already popped the first byte out of the stream, so
+                // so we read protocol positions shifted 1 byte left (e.g., byte 1 in protocol
+                // is now byte 0.
+                let c_name   : String = String::from_utf8_lossy(&message_data[0..32]).to_string();
+                let flags    : u8 = message_data[32];
+                let attack   : u16 = u16::from_le_bytes([message_data[33], message_data[34]]);
+                let defense  : u16 = u16::from_le_bytes([message_data[35], message_data[36]]);
+                let regen    : u16 = u16::from_le_bytes([message_data[37], message_data[38]]);
+                let health   : i16 = i16::from_le_bytes([message_data[39], message_data[40]]);
+                let gold     : u16 = u16::from_le_bytes([message_data[41], message_data[42]]);
+                let room     : u16 = u16::from_le_bytes([message_data[43], message_data[44]]);
+                let desc_len : usize = u16::from_le_bytes([message_data[45], message_data[46]]) as usize;
 
-                let  desc = vec![0u8; desc_len];
-                /*
+                let mut desc = vec![0u8; desc_len];
                 let len = reader.read_exact(&mut desc).map_err(|err|{
                     println!("[GAME SERVER] Could not read character description; error was {err}");
                 })?;
-                println!("len: {:?}", len);*/
+                println!("len: {:?}", len);
 
                 //FIXME: these are for debugging i/o; remove later
                 println!("name: {c_name}");
@@ -495,7 +497,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
 
             _ => {}
         }
- 
+
     /*
     let c_desc = String::from("I am definitely not a plumber in search of a princess");
     let c_name = String::from("ItsaMe,Oiram"); //placeholder name, definitely not Mario
