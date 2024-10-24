@@ -270,6 +270,7 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
             }
             Message::Game{ author, message_type, initial_points, stat_limit, desc_len,  game_desc} => {
                 println!("[MPSC RECEIVED] game message from: {:?}", author.peer_addr().unwrap());
+                println!("Message len: {}", desc_len);
                 let mut message: Vec<u8> = Vec::new();
                 message.push(message_type);
                 message.extend(initial_points.to_le_bytes());
@@ -408,7 +409,6 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 let len = reader.read_exact(&mut desc).map_err(|err|{
                     println!("[GAME SERVER] Could not read character description; error was {err}");
                 })?;
-                println!("len: {:?}", len);
 
                 //FIXME: these are for debugging i/o; remove later
                 println!("name: {c_name}");

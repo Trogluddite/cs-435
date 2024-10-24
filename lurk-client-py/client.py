@@ -38,11 +38,6 @@ def send_character(character_name, attack, defense, regen, description, skt):
     character_name = character_name[:32] if len(character_name) > 32 else character_name
     send_bytes += bytes(character_name.ljust(32, '\0'), encoding='utf-8')
 
-    print(f"attack: {attack}, attack bytes: {bytes(struct.pack('<H', attack))}")
-    print(f"defense: {defense}, defense bytes: {bytes(struct.pack('<H', defense))}")
-    print(f"regen: {regen}, regen bytes: {bytes(struct.pack('<H', regen))}")
-    print(f"bytes: {bytes(struct.pack('<H', 19275))}")
-
     send_bytes += b'\x88'   #character flags; 88 = 'alive' and 'ready' set
     send_bytes += bytes(struct.pack('<H', attack))   # pack attack into 'unsigned short' (two bytes)
     send_bytes += bytes(struct.pack('<H', defense))  # pack 'defense' into 'unsigned short'
@@ -70,8 +65,24 @@ def send_character(character_name, attack, defense, regen, description, skt):
     print(f"bytes 48-desc_len: {send_bytes[48:(48+desc_len)].decode('utf-8')}")
 
     skt.send(send_bytes)
-    rcv_buf = skt.recv(1024)
-    print(rcv_buf)
+    #rcv_buf = skt.recv(1024)
+    #print(rcv_buf)
+
+def handle_game_msg(msg):
+    print("Handling game message")
+    print(f"message type: {msg[0]}")
+    print(f"initial points: {int.from_bytes(msg[1:2])}")
+    print(f"stat limit: {int.from_bytes(msg[3:4])}")
+    desc_len = int.from_bytes(msg[5:6])
+    print(f"desc length: {desc_len}")
+    print(f"desc: {msg[7:7+desc_len].decode('utf-8')}")
+
+def handle_version_msg(msg):
+    print("Handling version message")
+    print(f"message type: {msg[0]}")
+    print(f"major version: {msg[1]}")
+    print(f"minor version: {msg[2]}")
+    print(f"extension len: {int.from_bytes(msg[3:4])}")
 
 def main():
     skt = socket.socket();
@@ -80,11 +91,29 @@ def main():
 if __name__=="__main__":
     skt = socket.socket();
     skt.connect( (str(sys.argv[1]), int(sys.argv[2])) )
+    recv_msg = skt.recv(4096)
+
+    while(len(recv_msg) > 0):
+        if(recv_msg[0] == 11):
+            msg_len = 6
+            desc_len = int.from_bytes(recv_msg[5:6])
+            print(desc_len)
+            msg_len += desc_len
+            handle_msg = recv_msg[1:msg_len]
+            recv_msg = recv_msg[msg_len+1:]
+            handle_game_msg(handle_msg)
+        if(recv_msg[0] == 14):
+            msg_len = 4
+            extension_len = int.from_bytes(recv_msg[3:4])
+            msg_len += extension_len
+            handle_msg = recv_msg[0:msg_len]
+            recv_msg = recv_msg[msg_len+1:]
+            handle_version_msg(handle_msg)
 
     send_character(character_name="ohai",
-                   attack=25,
-                   defense=50,
-                   regen=75,
+                   attack=500,
+                   defense=500,
+                   regen=500,
                    description="this is my character I am a character",
                    skt=skt)
     skt.close()
