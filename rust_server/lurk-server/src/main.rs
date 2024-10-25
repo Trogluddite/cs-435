@@ -2,7 +2,7 @@ use std::io::{BufReader, Write, Read};
 use std::{result, thread};          // later: env
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, Shutdown};
 
 const SERVER_PORT:u16 = 5005;
 const SERVER_ADDRESS:&'static str = "0.0.0.0";
@@ -443,7 +443,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 let desc_len : usize = u16::from_le_bytes([message_data[45], message_data[46]]) as usize;
 
                 let mut desc = vec![0u8; desc_len];
-                let len = reader.read_exact(&mut desc).map_err(|err|{
+                reader.read_exact(&mut desc).map_err(|err|{
                     println!("[GAME SERVER] Could not read character description; error was {err}");
                 })?;
 
@@ -511,6 +511,9 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 })?;
             }
             MessageType::START => {
+                if game_started{
+                    println!("[SERVER_MESSAGE] received 'Start' message, but game was already started. Doing nothing.");
+                }
                 if !player_joined{
                     println!("[SERVER MESSAGE] player with name {:?} attempted to start before character was accepted", character.name);
                     let estr : String = String::from("Error: your character has not been accepted to the server");
@@ -566,23 +569,50 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                     game_started = true;
                 }
             }
-            MessageType::ACCEPT => {}
             MessageType::CHANGEROOM => {}
-            MessageType::CONNECTION => {}
-            MessageType::ERROR => {}
             MessageType::FIGHT => {}
-            MessageType::GAME => {}
-            MessageType::LEAVE => {}
+
+            //FIXME: Figure out how to handle shared scope for game state vars
+            MessageType::LEAVE => {
+                if !player_joined{
+                    println!("[SERVER_MESSAGE] Received 'leave' message, but no player joined. Doing nothing.");
+                }
+                else{
+                    println!("[SERVER_MESSAGE] Player {:?} disconnected", character.name);
+                    player_joined = false;
+                    game_started = false;
+                    stream.shutdown(Shutdown::Both).expect("Could not close TCP stream");
+                    break;
+                }
+            }
             MessageType::LOOT => {}
             MessageType::MESSAGE => {}
-            MessageType::ROOM => {}
             MessageType::PVPFIGHT => {}
             MessageType::VERSION => {}
 
-            _ => {}
-        }
+            /**************** < non-client message types>*******************/
+            MessageType::ACCEPT => {
+                println!("[SERVER_MESSAGE] The client sent an 'Accept' message; we're ignoring it");
+            }
+            MessageType::CONNECTION => {
+                println!("[SERVER_MESSAGE] The client sent a 'Connection' message; we're ignoring it");
+            }
+            MessageType::ERROR => {
+                println!("[SERVER_MESSAGE] The client sent an 'Error' message; we're ignoring it");
+            }
+            MessageType::ROOM => {
+                println!("[SERVER_MESSAGE] The client sent a 'Room' message; we're ignoring it");
+            }
+            /**************** < non-client message types>*******************/
 
+            _ => {
+                println!(
+                    "[SERVER_MESSAGE] The client sent an unknown message type, with id: {:?}. Ignoring message contents.",
+                    message_type[0]
+                );
+            }
+        }
        bufr.clear();
     }
-    //Ok(())
+    Ok(())
 }

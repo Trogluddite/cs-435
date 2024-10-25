@@ -148,16 +148,24 @@ if __name__=="__main__":
             handle_error(recv_msg)
     messages = []
 
+    #send message types that the server should ignore
+    send_bytes = b'\x08' #accept
+    skt.send(send_bytes)
+    send_bytes = b'\x0d' #connection
+    skt.send(send_bytes)
+    send_bytes = b'\x07' #error
+    skt.send(send_bytes)
+    send_bytes = b'\x09' #room
+    skt.send(send_bytes)
+
+    # messages type 10
     # sdend start; expect 'accept', 'error', 'room' and 1 or more 'character' messages
     print("sending start")
     send_start(skt)
-    recv_msg = "notnone"
-    print(f"messages length: {len(messages)}")
-    while(recv_msg != ""):
-        recv_msg = skt.recv(RECV_BUFFSIZE)
-        if recv_msg != "":
-            messages.append(recv_msg)
-    print(messages)
+
+    # let's get out of here
+    send_bytes = b'\x0c' #leave message
+    skt.send(send_bytes)
 
 
     skt.close()
