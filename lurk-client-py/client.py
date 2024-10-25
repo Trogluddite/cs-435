@@ -32,7 +32,6 @@ RECV_BUFFSIZE=2048
 #<-C Leave
 #
 
-
 def send_character(character_name, attack, defense, regen, description, skt):
     send_bytes = b'\x0a'    # messages type 10
 
@@ -71,7 +70,6 @@ def send_start(skt):
     print("Sending Start message")
     print(f"byte 0: {send_bytes[0]}")
     skt.send(send_bytes)
-
 
 def handle_game_msg(msg):
     print("Handling game message")
@@ -125,7 +123,9 @@ if __name__=="__main__":
 
     # for this test, expect a 'game' and a 'version' message
     messages.append(skt.recv(RECV_BUFFSIZE))
+    print("received 1")
     messages.append(skt.recv(RECV_BUFFSIZE))
+    print("received 2")
     for recv_msg in messages:
         if(recv_msg[0] == 11):
             handle_game_msg(recv_msg)

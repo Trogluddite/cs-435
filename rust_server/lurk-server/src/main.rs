@@ -323,6 +323,20 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
                     println!("couldn't send Game message to client, with error {}", err);
                 })?;
             }
+            Message::Room { author, message_type, room_number, room_name, desc_len, room_desc } => {
+                println!("[MPSC RECEIVED] room messag from: {:?}", author.peer_addr().unwrap());
+                let mut message: Vec<u8> = Vec::new();
+                message.push(message_type);
+                message.extend(room_number.to_le_bytes());
+                message.extend(room_name);
+                message.extend(desc_len.to_le_bytes());
+                message.extend(room_desc);
+
+                println!("[SERVER_MESSAGE] Sending room message");
+                author.as_ref().write_all(&message).map_err(|err|{
+                    println!("Couldn't send Room message to client, with error {}", err);
+                })?;
+            }
             //extensions not currently implemented
             Message::Version{ author, message_type, major_revision, minor_revision, ext_len: _, ext_list: _} => {
                 println!("[MPSC RECEIVED] Version message from:  {:?}", author.peer_addr().unwrap());
@@ -462,7 +476,6 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                     message.send(emsg).map_err(|err| {
                         println!("Could not send error message to client {c_name}; Error was {err}");
                     })?;
-                    println!("doint continue");
                     continue;
                 };
 
@@ -516,10 +529,8 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 }
                 else {
                     println!("[MPSC Send] Sending Character message");
-                    let mut namebuff = [0u8;32]; //FIXME: sanitize character names
-                    println!("character name: {:?}", character.name);
-                    println!("character name len: {:?}", character.name.len());
-                    namebuff[..character.name.len()].copy_from_slice(character.name.as_bytes());
+                    let mut namebuff = [0u8;32];
+                    namebuff[..32].clone_from_slice(&character.name[0..32].as_bytes());
                     let cmesg = Message::Character {
                         author: stream.clone(),
                         message_type: MessageType::CHARACTER,
@@ -537,6 +548,21 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                     message.send(cmesg).map_err(|err| {
                         println!("Could not send error message to client; Error was {err}");
                     })?;
+                    println!("[MPSC Send] Sending Room message");
+                    let rdesc : String = String::from("Here's a room description");
+                    let rname : [u8;32] = [0u8;32];
+                    let rmesg = Message::Room {
+                        author: stream.clone(),
+                        message_type: MessageType::ROOM,
+                        room_number: 1,
+                        room_name: rname,
+                        desc_len: rdesc.len() as u16,
+                        room_desc: rdesc.as_bytes().to_vec(),
+                    };
+                    message.send(rmesg).map_err(|err|{
+                        println!("Could not send room message to clienbt; Error was {err}");
+                    })?;
+
                     game_started = true;
                 }
             }
@@ -556,86 +582,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
             _ => {}
         }
 
-    /*
-    let c_desc = String::from("I am definitely not a plumber in search of a princess");
-    let c_name = String::from("ItsaMe,Oiram"); //placeholder name, definitely not Mario
-    let mut name_c_array = [0u8; 32];           // pre-pad name array
-    // shove whatever will fit into name_c_array
-    name_c_array[..c_name.len()].copy_from_slice(c_name.as_bytes());
-    let character_info = Message::Character {
-        author: stream.clone(),
-        message_type: MessageType::new().character,
-        character_name: name_c_array,
-        flags: 0b10000000,
-        attack: 500,
-        defense: 500,
-        regen: 500,
-        health: 500,
-        gold: 12,
-        curr_room: 0,
-        desc_len: c_desc.len() as u16,
-        desc: c_desc.as_bytes().to_vec(),
-    };
-
-    let r_desc = String::from("this is a room mkay");
-    let mut r_name_arr = [0u8; 32];
-    let r_name = String::from("MURDERSH3D");
-    r_name_arr[..r_name.len()].copy_from_slice(r_name.as_bytes());
-    let conn_info = Message::Connection { 
-        author: stream.clone(),
-        message_type: MessageType::new().connection,
-        room_number: 0,
-        room_name: r_name_arr,
-        desc_len: r_desc.len() as u16,
-        room_desc: r_desc.as_bytes().to_vec(),
-    };
-
-
-    println!("[SENT] Character to {:?}", stream.peer_addr().unwrap());
-    message.send(character_info).map_err(|err| {
-        println!("couldn't send Character message to the client. Err was: {}", err);
-    })?;
-
-    println!("[SENT] Conn to {:?}", stream.peer_addr().unwrap());
-    message.send(conn_info).map_err(|err| {
-        println!("couldn't send Connection message to the client. Err was: {}", err);
-    })?;*/
-
-
-        bufr.clear();
+       bufr.clear();
     }
     //Ok(())
 }
-
-
-/*
-* send character  message example
-*
-                let c_desc = String::from("I am definitely not a plumber in search of a princess");
-                let c_name = String::from("ItsaMe,Oiram"); //placeholder name, definitely not Mario
-                let mut name_c_array = [0u8; 32];           // pre-pad name array
-                // shove whatever will fit into name_c_array
-                name_c_array[..c_name.len()].copy_from_slice(c_name.as_bytes());
-                let character_info = Message::Character {
-                    author: stream.clone(),
-                    message_type: MessageType::new().character,
-                    character_name: name_c_array,
-                    flags: 0b10000000,
-                    attack: 500,
-                    defense: 500,
-                    regen: 500,
-                    health: 500,
-                    gold: 12,
-                    curr_room: 0,
-                    desc_len: c_desc.len() as u16,
-                    desc: c_desc.as_bytes().to_vec(),
-                };
-
-                message.send(character_info).map_err(|err|{
-                    eprintln!("couldn't do the thing, err was: {:?}",err);
-                })?;
-                continue;
-            }
-
-*/
-
