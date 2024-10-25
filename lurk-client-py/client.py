@@ -4,6 +4,8 @@ import socket
 import struct
 import sys
 
+BYTE_ORDER='little'
+RECV_BUFFSIZE=2048
 
 #S-> server sends
 #<-C client sends
@@ -51,7 +53,6 @@ def send_character(character_name, attack, defense, regen, description, skt):
     send_bytes += bytes(struct.pack('<h', desc_len))
     send_bytes += bytes(description, encoding='utf-8')
 
-    print(desc_len, description)
     print(f"Byte 0:     {send_bytes[0]}")
     print(f"Byte 1-32:  {send_bytes[1:32].decode('utf-8')}")
     print(f"Byte 33:    {bin(int(send_bytes[33]))}")
@@ -63,17 +64,20 @@ def send_character(character_name, attack, defense, regen, description, skt):
     print(f"Byte 44-45: {int.from_bytes(send_bytes[44:45])}")
     print(f"Byte 46-47: {int.from_bytes(send_bytes[46:47])}")
     print(f"bytes 48-desc_len: {send_bytes[48:(48+desc_len)].decode('utf-8')}")
-
     skt.send(send_bytes)
-    #rcv_buf = skt.recv(1024)
-    #print(rcv_buf)
+
+def send_start(skt):
+    send_bytes = b"\x06"
+    print("Sending Start message")
+    print(f"byte 0: {send_bytes[0]}")
+    skt.send(send_bytes)
+
 
 def handle_game_msg(msg):
     print("Handling game message")
-    print(f"message type: {msg[0]}")
-    print(f"initial points: {int.from_bytes(msg[1:2])}")
-    print(f"stat limit: {int.from_bytes(msg[3:4])}")
-    desc_len = int.from_bytes(msg[5:6])
+    print(f"initial points: {int.from_bytes(msg[1:3], BYTE_ORDER)}")
+    print(f"stat limit: {int.from_bytes(msg[3:5], BYTE_ORDER)}")
+    desc_len = int.from_bytes(msg[5:7], BYTE_ORDER)
     print(f"desc length: {desc_len}")
     print(f"desc: {msg[7:7+desc_len].decode('utf-8')}")
 
@@ -82,7 +86,33 @@ def handle_version_msg(msg):
     print(f"message type: {msg[0]}")
     print(f"major version: {msg[1]}")
     print(f"minor version: {msg[2]}")
-    print(f"extension len: {int.from_bytes(msg[3:4])}")
+    print(f"extension len: {int.from_bytes(msg[3:5], BYTE_ORDER)}")
+
+def handle_accept(msg):
+    print("Handling accept message")
+    print(f"message type: {msg[0]}")
+    print(f"type of accepted action: {msg[1]}")
+
+def handle_error(msg):
+    codes_dict = {
+            0 : "Other",
+            1 : "Bad Room",
+            2 : "Player exists",
+            3 : "Bad monster",
+            4 : "Stat error",
+            5 : "Not Ready",
+            6 : "No target",
+            7 : "No Fight",
+            8 : "No PVP on Server",
+    }
+    print("handling error message")
+    print(f"message type: {msg[0]}")
+    error_code = msg[1]
+    print(f"error code: {error_code}")
+    message_len = int.from_bytes(msg[2:4], BYTE_ORDER)
+    print(f"error message length: {message_len}")
+    print(f"error message {msg[4:4+message_len].decode('utf-8')}")
+    print(f"error code {error_code} means {codes_dict[error_code]}")
 
 def main():
     skt = socket.socket();
@@ -91,29 +121,43 @@ def main():
 if __name__=="__main__":
     skt = socket.socket();
     skt.connect( (str(sys.argv[1]), int(sys.argv[2])) )
-    recv_msg = skt.recv(4096)
+    messages = []
 
-    while(len(recv_msg) > 0):
+    # for this test, expect a 'game' and a 'version' message
+    messages.append(skt.recv(RECV_BUFFSIZE))
+    messages.append(skt.recv(RECV_BUFFSIZE))
+    for recv_msg in messages:
         if(recv_msg[0] == 11):
-            msg_len = 6
-            desc_len = int.from_bytes(recv_msg[5:6])
-            print(desc_len)
-            msg_len += desc_len
-            handle_msg = recv_msg[1:msg_len]
-            recv_msg = recv_msg[msg_len+1:]
-            handle_game_msg(handle_msg)
+            handle_game_msg(recv_msg)
         if(recv_msg[0] == 14):
-            msg_len = 4
-            extension_len = int.from_bytes(recv_msg[3:4])
-            msg_len += extension_len
-            handle_msg = recv_msg[0:msg_len]
-            recv_msg = recv_msg[msg_len+1:]
-            handle_version_msg(handle_msg)
+            handle_version_msg(recv_msg)
+    messages = []
 
+    # send character, expect 'accept' or 'error' in response
     send_character(character_name="ohai",
-                   attack=500,
-                   defense=500,
-                   regen=500,
+                   attack=50,
+                   defense=50,
+                   regen=50,
                    description="this is my character I am a character",
                    skt=skt)
+    messages.append(skt.recv(RECV_BUFFSIZE))
+    for recv_msg in messages:
+        if(recv_msg[0] == 8):
+            handle_accept(recv_msg)
+        if(recv_msg[0] == 7):
+            handle_error(recv_msg)
+    messages = []
+
+    # sdend start; expect 'accept', 'error', 'room' and 1 or more 'character' messages
+    print("sending start")
+    send_start(skt)
+    recv_msg = "notnone"
+    print(f"messages length: {len(messages)}")
+    while(recv_msg != ""):
+        recv_msg = skt.recv(RECV_BUFFSIZE)
+        if recv_msg != "":
+            messages.append(recv_msg)
+    print(messages)
+
+
     skt.close()

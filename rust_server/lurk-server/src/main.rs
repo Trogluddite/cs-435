@@ -256,30 +256,13 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
         })?;
 
         match message{
-            Message::Version{ author, message_type, major_revision, minor_revision, ext_len: _, ext_list: _} => {
-                println!("[MPSC RECEIVED] Version message from:  {:?}", author.peer_addr().unwrap());
+            Message::Accept{ author, message_type, accepted_type} => {
+                println!("[MPCS RECEIVED] Accept message from: {:?}", author.peer_addr().unwrap());
                 let mut message: Vec<u8> = Vec::new();
                 message.push(message_type);
-                message.extend(major_revision.to_le_bytes());
-                message.extend(minor_revision.to_le_bytes());
-                message.extend(0u16.to_le_bytes());
-
+                message.push(accepted_type);
                 author.as_ref().write_all(&message).map_err(|err| {
-                    eprintln!("Couldn't send Version message to client, with error: {}", err);
-                })?;
-            }
-            Message::Game{ author, message_type, initial_points, stat_limit, desc_len,  game_desc} => {
-                println!("[MPSC RECEIVED] game message from: {:?}", author.peer_addr().unwrap());
-                println!("Message len: {}", desc_len);
-                let mut message: Vec<u8> = Vec::new();
-                message.push(message_type);
-                message.extend(initial_points.to_le_bytes());
-                message.extend(stat_limit.to_le_bytes());
-                message.extend(desc_len.to_le_bytes());
-                message.extend(game_desc);
-
-                author.as_ref().write_all(&message).map_err(|err|{
-                    println!("couldn't send Game message to client, with error {}", err);
+                    eprintln!("Couldn't send accept message to client, with error: {}", err);
                 })?;
             }
             Message::Character { author, message_type, character_name, flags, attack, defense, regen, health, gold, curr_room, desc_len, desc } => {
@@ -314,7 +297,47 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
                     println!("Couldn't send connection message to client, with error {}", err);
                 })?;
             }
-            _ => {
+            Message::Error { author, message_type, error_code, messaage_len, message } => {
+                println!("[MPSC RECEIVED] Error message from: {:?}", author.peer_addr().unwrap());
+                let mut send_message: Vec<u8> = Vec::new();
+                send_message.push(message_type);
+                send_message.push(error_code);
+                send_message.extend(messaage_len.to_le_bytes());
+                send_message.extend(message);
+
+                author.as_ref().write_all(&send_message).map_err(|err| {
+                    println!("Couldn't send connection message to client, with error {}", err);
+                })?;
+            }
+            Message::Game{ author, message_type, initial_points, stat_limit, desc_len,  game_desc} => {
+                println!("[MPSC RECEIVED] game message from: {:?}", author.peer_addr().unwrap());
+                let mut message: Vec<u8> = Vec::new();
+                message.push(message_type);
+                message.extend(initial_points.to_le_bytes());
+                message.extend(stat_limit.to_le_bytes());
+                message.extend(desc_len.to_le_bytes());
+                message.extend(game_desc);
+
+                println!("[SERVER_MESSAGE] Sending Game message");
+                author.as_ref().write_all(&message).map_err(|err|{
+                    println!("couldn't send Game message to client, with error {}", err);
+                })?;
+            }
+            //extensions not currently implemented
+            Message::Version{ author, message_type, major_revision, minor_revision, ext_len: _, ext_list: _} => {
+                println!("[MPSC RECEIVED] Version message from:  {:?}", author.peer_addr().unwrap());
+                let mut message: Vec<u8> = Vec::new();
+                message.push(message_type);
+                message.extend(major_revision.to_le_bytes());
+                message.extend(minor_revision.to_le_bytes());
+                message.extend(0u16.to_le_bytes());
+
+                println!("[SERVER_MESSAGE] Sending Version message");
+                author.as_ref().write_all(&message).map_err(|err| {
+                    eprintln!("Couldn't send Version message to client, with error: {}", err);
+                })?;
+            }
+           _ => {
                 println!("[RECEIVED] unhandled message");
             }
         }
@@ -422,14 +445,13 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 println!("desc_len: {desc_len}");
                 let s_desc = String::from_utf8_lossy(&desc);
                 println!("Description: {s_desc}");
-
                 println!("[GAME SERVER] player {c_name} connected");
 
                 //notify client if supplied stats exceed maximum
                 let points = attack + defense + regen;
                 if points > initial_points {
-                    println!("[GAME SERVER] Player connected with stats exceeding max value of {stat_limit}; returning error");
-                    let estr : String = String::from("Error: stats set too high; Attack, Defense, and Regen should not exceed {stat_limit}");
+                    println!("[GAME SERVER] Player connected with stats exceeding the value of {initial_points}; returning error");
+                    let estr : String = String::from("Error: stats set too high; Attack, Defense, and Regen should not exceed initial_points");
                     let emsg = Message::Error {
                         author: stream.clone(),
                         message_type: MessageType::ERROR,
@@ -440,6 +462,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                     message.send(emsg).map_err(|err| {
                         println!("Could not send error message to client {c_name}; Error was {err}");
                     })?;
+                    println!("doint continue");
                     continue;
                 };
 
@@ -462,26 +485,61 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 character.curr_room = 0;
 
                 player_joined = true;
-                /*let c_msg = Message::Character {
+
+                //Send accept to client
+                println!("[MPSC Send] Sending Accept message");
+                let acceptmsg = Message::Accept {
                     author: stream.clone(),
-                    message_type: MessageType::CHARACTER,
-                    character_name: character.name.as_bytes()[0..32];
-                    flags: character.flags,
-                    attack: character.attack,
-                    defense: character.defense,
-                    regen: character.regen,
-                    health: character.health,
-                    gold: character.gold,
-                    curr_room: character.curr_room,
-                    desc_len: desc_len as u16,
-                    desc,
-                };*/
+                    message_type: MessageType::ACCEPT,
+                    accepted_type: MessageType::CHARACTER,
+                };
+                message.send(acceptmsg).map_err(|err| {
+                    println!("Could not send error message to client; Error was {err}");
+                })?;
             }
-
             MessageType::START => {
-                println!("got a start message");
+                if !player_joined{
+                    println!("[SERVER MESSAGE] player with name {:?} attempted to start before character was accepted", character.name);
+                    let estr : String = String::from("Error: your character has not been accepted to the server");
+                    let emesg = Message::Error {
+                        author: stream.clone(),
+                        message_type: MessageType::ERROR,
+                        error_code: ErrorType::NOT_READY,
+                        messaage_len: estr.len() as u16,
+                        message: estr.into_bytes(),
+                    };
+                    println!("[MPSC Send] Sending Error message");
+                    message.send(emesg).map_err(|err| {
+                        println!("Could not send error message to client; Error was {err}");
+                    })?;
+                    continue;
+                }
+                else {
+                    println!("[MPSC Send] Sending Character message");
+                    let mut namebuff = [0u8;32]; //FIXME: sanitize character names
+                    println!("character name: {:?}", character.name);
+                    println!("character name len: {:?}", character.name.len());
+                    namebuff[..character.name.len()].copy_from_slice(character.name.as_bytes());
+                    let cmesg = Message::Character {
+                        author: stream.clone(),
+                        message_type: MessageType::CHARACTER,
+                        character_name: namebuff,
+                        flags: character.flags,
+                        attack: character.attack,
+                        defense: character.defense,
+                        regen: character.regen,
+                        health: character.health,
+                        gold: character.gold,
+                        curr_room: character.curr_room,
+                        desc_len: character.desc.len() as u16,
+                        desc: character.desc.as_bytes().to_vec(),
+                    };
+                    message.send(cmesg).map_err(|err| {
+                        println!("Could not send error message to client; Error was {err}");
+                    })?;
+                    game_started = true;
+                }
             }
-
             MessageType::ACCEPT => {}
             MessageType::CHANGEROOM => {}
             MessageType::CONNECTION => {}
