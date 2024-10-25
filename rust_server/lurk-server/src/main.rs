@@ -324,7 +324,7 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
                 })?;
             }
             Message::Room { author, message_type, room_number, room_name, desc_len, room_desc } => {
-                println!("[MPSC RECEIVED] room messag from: {:?}", author.peer_addr().unwrap());
+                println!("[MPSC RECEIVED] room message from: {:?}", author.peer_addr().unwrap());
                 let mut message: Vec<u8> = Vec::new();
                 message.push(message_type);
                 message.extend(room_number.to_le_bytes());
@@ -439,27 +439,13 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 let regen    : u16 = u16::from_le_bytes([message_data[37], message_data[38]]);
                 let health   : i16 = i16::from_le_bytes([message_data[39], message_data[40]]);
                 let gold     : u16 = u16::from_le_bytes([message_data[41], message_data[42]]);
-                let room     : u16 = u16::from_le_bytes([message_data[43], message_data[44]]);
+                let _room     : u16 = u16::from_le_bytes([message_data[43], message_data[44]]);
                 let desc_len : usize = u16::from_le_bytes([message_data[45], message_data[46]]) as usize;
 
                 let mut desc = vec![0u8; desc_len];
                 reader.read_exact(&mut desc).map_err(|err|{
                     println!("[GAME SERVER] Could not read character description; error was {err}");
                 })?;
-
-                //FIXME: these are for debugging i/o; remove later
-                println!("name: {c_name}");
-                println!("flags: {:#010b}", flags);
-                println!("attack: {attack}");
-                println!("defense: {defense}");
-                println!("regen: {regen}");
-                println!("health: {health}");
-                println!("gold: {gold}");
-                println!("room: {room}");
-                println!("desc_len: {desc_len}");
-                let s_desc = String::from_utf8_lossy(&desc);
-                println!("Description: {s_desc}");
-                println!("[GAME SERVER] player {c_name} connected");
 
                 //notify client if supplied stats exceed maximum
                 let points = attack + defense + regen;
@@ -572,15 +558,12 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
             MessageType::CHANGEROOM => {}
             MessageType::FIGHT => {}
 
-            //FIXME: Figure out how to handle shared scope for game state vars
             MessageType::LEAVE => {
                 if !player_joined{
                     println!("[SERVER_MESSAGE] Received 'leave' message, but no player joined. Doing nothing.");
                 }
                 else{
                     println!("[SERVER_MESSAGE] Player {:?} disconnected", character.name);
-                    player_joined = false;
-                    game_started = false;
                     stream.shutdown(Shutdown::Both).expect("Could not close TCP stream");
                     break;
                 }
