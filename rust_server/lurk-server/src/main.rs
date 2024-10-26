@@ -439,7 +439,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 let regen    : u16 = u16::from_le_bytes([message_data[37], message_data[38]]);
                 let health   : i16 = i16::from_le_bytes([message_data[39], message_data[40]]);
                 let gold     : u16 = u16::from_le_bytes([message_data[41], message_data[42]]);
-                let _room     : u16 = u16::from_le_bytes([message_data[43], message_data[44]]);
+                let _room    : u16 = u16::from_le_bytes([message_data[43], message_data[44]]);
                 let desc_len : usize = u16::from_le_bytes([message_data[45], message_data[46]]) as usize;
 
                 let mut desc = vec![0u8; desc_len];
@@ -482,7 +482,6 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 character.health = health;
                 character.gold = gold;
                 character.curr_room = 0;
-
                 player_joined = true;
 
                 //Send accept to client
