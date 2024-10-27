@@ -82,14 +82,11 @@ impl PlayerFlags{
 
 #[derive(Debug)]
 #[allow(dead_code)] //FIXME: later
-enum Message<'a>{
+enum Message{
     Accept{
         author:         Arc<TcpStream>,
         message_type:   u8,
         accepted_type:  u8,
-    },
-    AddCharacter{
-        character:      &'a Character,
     },
     ChangeRoom{
         author:         Arc<TcpStream>,
@@ -183,7 +180,7 @@ enum Message<'a>{
 }
 
 #[allow(dead_code)] //FIXME later
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Character{
     conn:       Arc<TcpStream>,
     name:       String,
@@ -232,7 +229,7 @@ fn main() -> Result<()> {
 
     let (sender, receiver) = channel();
     let receiver = Arc::new(Mutex::new(receiver));  //shadow 'receiver' w/ ARC & mutex
-    thread::spawn(move || handle_received_messages(receiver, character_map)); // spawn server thread
+    thread::spawn(move || handle_received_messages(receiver)); // spawn server thread
 
     //listen for incoming connections
     for stream in listener.incoming() {
@@ -240,8 +237,9 @@ fn main() -> Result<()> {
             Ok(stream) => {
                 let stream = Arc::new(stream);
                 let sender = sender.clone();
+                let character_map = Arc::clone(&character_map);
                 println!("[SERVER MESSAGE]: New connection, spawning thread for client {:?}", stream.peer_addr().unwrap());
-                thread::spawn(move || handle_client(stream, sender));
+                thread::spawn(move || handle_client(stream, sender, character_map));
             }
             Err(e) => {
                 println!("Error: {}",e);
@@ -252,13 +250,8 @@ fn main() -> Result<()> {
 }
 
 //thread receiver
-fn handle_received_messages(
-        receiver: Arc<Mutex<Receiver<Message>>>,
-        character_map: Arc<Mutex<HashMap<String, Character>>>
-    ) -> Result<()> {
+fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<()> {
     println!("[SERVER_MESSAGE]: handling incomming messages");
-
-    let character_map = Arc::clone(&character_map);
 
     loop{
         let rec = receiver.lock();
@@ -271,9 +264,6 @@ fn handle_received_messages(
         })?;
 
         match message{
-            Message::AddCharacter{ character: _ } => {
-                println!("[MPSC RECEIVED] AddCharacter message")
-            }
             Message::Accept{ author, message_type, accepted_type} => {
                 println!("[MPSC RECEIVED] Accept message from: {:?}", author.peer_addr().unwrap());
                 let mut message: Vec<u8> = Vec::new();
@@ -377,7 +367,10 @@ fn handle_received_messages(
 }
 
 //tcp receiver
-fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()> {
+fn handle_client(
+    stream: Arc<TcpStream>,
+    message: Sender<Message>,
+    charater_map: Arc<Mutex<HashMap<String, Character>>>) -> Result<()> {
     /***************** < server state params> *****************/
     // these will be defaults for each connecting client
     let stat_limit : u16 = 5000;
@@ -385,7 +378,10 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     let mut game_started : bool = false;
     let mut player_joined : bool = false;
     /***************** < server state params> *****************/
+
     let mut character : Character = Character::new(stream.clone(), String::new(), String::new());
+    println!("[SERVER_MESSAGE] Adding character to hashmap");
+    let character_ref = &mut character;
 
     if stream.peer_addr().is_err() {
         println!("Error: couldn't get client's peer address.");
@@ -407,9 +403,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
     println!("[MPSC SEND] Version message from {:?}", thread::current().id());
     message.send(server_version).map_err(|err| {
         println!("couldn't send Version message to client. Err was: {}", err);
-        std::process::exit(1);
     })?;
-
     let game_info = Message::Game{
         author: stream.clone(),
         message_type: MessageType::GAME,
@@ -441,7 +435,6 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
 
         match message_type[0] {
             MessageType::CHARACTER => {
-                println!("matched a character message");
                 let mut message_data = [0u8; 47]; // 47 bytes + 1 (message type already read)
                 reader.read_exact(&mut message_data).map_err(|err|{
                     println!("[GAME SERVER] Could not read character message; error was {err}");
@@ -451,6 +444,13 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 // so we read protocol positions shifted 1 byte left (e.g., byte 1 in protocol
                 // is now byte 0.
                 let c_name   : String = String::from_utf8_lossy(&message_data[0..32]).to_string();
+                match charater_map.lock().unwrap().get(&c_name){
+                    Some(_) => {
+                        println!("[SERVER_MESSAGE] character {c_name} already joined!");
+                    },
+                    None => println!("[SERVER_MESSAGE] character{c_name} joining")
+                }
+
                 let flags    : u8 = message_data[32];
                 let attack   : u16 = u16::from_le_bytes([message_data[33], message_data[34]]);
                 let defense  : u16 = u16::from_le_bytes([message_data[35], message_data[36]]);
@@ -485,30 +485,25 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
 
                 //set stats & return character message
                 if flags == PlayerFlags::ALL_FLAGS_SET || flags == PlayerFlags::NO_FLAGS_SET {
-                    character.flags = PlayerFlags::IS_ALIVE | PlayerFlags::IS_READY;
+                    character_ref.flags = PlayerFlags::IS_ALIVE | PlayerFlags::IS_READY;
                 }
                 //TODO: Handle reserved flags set??
                 else{
-                    character.flags = flags
+                    character_ref.flags = flags
                 }
-                character.name = if c_name == "" {String::from("DEFAULT MEAT")} else {c_name};
-                character.desc = String::from_utf8_lossy(&desc).to_string();
-                character.is_active = true;
-                character.attack = attack;
-                character.defense = defense;
-                character.regen = regen;
-                character.health = health;
-                character.gold = gold;
-                character.curr_room = 0;
+                character_ref.name = if c_name == "" {String::from("DEFAULT MEAT")} else {c_name};
+                character_ref.desc = String::from_utf8_lossy(&desc).to_string();
+                character_ref.is_active = true;
+                character_ref.attack = attack;
+                character_ref.defense = defense;
+                character_ref.regen = regen;
+                character_ref.health = health;
+                character_ref.gold = gold;
+                character_ref.curr_room = 0;
                 player_joined = true;
 
-                println!("[MPSC Send] Sending AddCharacter message");
-                let c_add_msg = Message::AddCharacter {
-                    character: &character,
-                };
-                message.send(c_add_msg).map_err(|err| {
-                    println!("[SERVER_MESSAGE] could not send AddCharacter message; error was {err}");
-                })?;
+                charater_map.lock().unwrap().insert(
+                    String::from(&character_ref.name), Clone::clone(character_ref));
 
                 //Send accept to client
                 println!("[MPSC Send] Sending Accept message");
@@ -526,7 +521,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                     println!("[SERVER_MESSAGE] received 'Start' message, but game was already started. Doing nothing.");
                 }
                 if !player_joined{
-                    println!("[SERVER MESSAGE] player with name {:?} attempted to start before character was accepted", character.name);
+                    println!("[SERVER MESSAGE] player with name {:?} attempted to start before character was accepted", character_ref.name);
                     let estr : String = String::from("Error: your character has not been accepted to the server");
                     let emesg = Message::Error {
                         author: stream.clone(),
@@ -544,20 +539,20 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 else {
                     println!("[MPSC Send] Sending Character message");
                     let mut namebuff = [0u8;32];
-                    namebuff[..32].clone_from_slice(&character.name[0..32].as_bytes());
+                    namebuff[..32].clone_from_slice(character_ref.name[0..32].as_bytes());
                     let cmesg = Message::Character {
                         author: stream.clone(),
                         message_type: MessageType::CHARACTER,
                         character_name: namebuff,
-                        flags: character.flags,
-                        attack: character.attack,
-                        defense: character.defense,
-                        regen: character.regen,
-                        health: character.health,
-                        gold: character.gold,
-                        curr_room: character.curr_room,
-                        desc_len: character.desc.len() as u16,
-                        desc: character.desc.as_bytes().to_vec(),
+                        flags: character_ref.flags,
+                        attack: character_ref.attack,
+                        defense: character_ref.defense,
+                        regen: character_ref.regen,
+                        health: character_ref.health,
+                        gold: character_ref.gold,
+                        curr_room: character_ref.curr_room,
+                        desc_len: character_ref.desc.len() as u16,
+                        desc: character_ref.desc.as_bytes().to_vec(),
                     };
                     message.send(cmesg).map_err(|err| {
                         println!("Could not send error message to client; Error was {err}");
@@ -588,7 +583,7 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                     println!("[SERVER_MESSAGE] Received 'leave' message, but no player joined. Doing nothing.");
                 }
                 else{
-                    println!("[SERVER_MESSAGE] Player {:?} disconnected", character.name);
+                    println!("[SERVER_MESSAGE] Player {:?} disconnected", character_ref.name);
                     stream.shutdown(Shutdown::Both).expect("Could not close TCP stream");
                     break;
                 }
