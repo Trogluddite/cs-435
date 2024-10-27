@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::{BufReader, Write, Read};
 use std::{result, thread};          // later: env
 use std::sync::{Arc, Mutex};
@@ -81,11 +82,14 @@ impl PlayerFlags{
 
 #[derive(Debug)]
 #[allow(dead_code)] //FIXME: later
-enum Message{
+enum Message<'a>{
     Accept{
         author:         Arc<TcpStream>,
         message_type:   u8,
         accepted_type:  u8,
+    },
+    AddCharacter{
+        character:      &'a Character,
     },
     ChangeRoom{
         author:         Arc<TcpStream>,
@@ -179,6 +183,7 @@ enum Message{
 }
 
 #[allow(dead_code)] //FIXME later
+#[derive(Debug)]
 struct Character{
     conn:       Arc<TcpStream>,
     name:       String,
@@ -221,9 +226,13 @@ fn main() -> Result<()> {
     })?;
     println!("[SERVER MESSAGE]: running on socket: {address}");
 
+
+    let character_map : HashMap<String, Character> = HashMap::new();
+    let character_map = Arc::new(Mutex::new(character_map));
+
     let (sender, receiver) = channel();
     let receiver = Arc::new(Mutex::new(receiver));  //shadow 'receiver' w/ ARC & mutex
-    thread::spawn(move || handle_received_messages(receiver)); // spawn server thread
+    thread::spawn(move || handle_received_messages(receiver, character_map)); // spawn server thread
 
     //listen for incoming connections
     for stream in listener.incoming() {
@@ -243,8 +252,14 @@ fn main() -> Result<()> {
 }
 
 //thread receiver
-fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<()> {
+fn handle_received_messages(
+        receiver: Arc<Mutex<Receiver<Message>>>,
+        character_map: Arc<Mutex<HashMap<String, Character>>>
+    ) -> Result<()> {
     println!("[SERVER_MESSAGE]: handling incomming messages");
+
+    let character_map = Arc::clone(&character_map);
+
     loop{
         let rec = receiver.lock();
         let message = rec
@@ -256,8 +271,11 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
         })?;
 
         match message{
+            Message::AddCharacter{ character: _ } => {
+                println!("[MPSC RECEIVED] AddCharacter message")
+            }
             Message::Accept{ author, message_type, accepted_type} => {
-                println!("[MPCS RECEIVED] Accept message from: {:?}", author.peer_addr().unwrap());
+                println!("[MPSC RECEIVED] Accept message from: {:?}", author.peer_addr().unwrap());
                 let mut message: Vec<u8> = Vec::new();
                 message.push(message_type);
                 message.push(accepted_type);
@@ -483,6 +501,14 @@ fn handle_client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<()>
                 character.gold = gold;
                 character.curr_room = 0;
                 player_joined = true;
+
+                println!("[MPSC Send] Sending AddCharacter message");
+                let c_add_msg = Message::AddCharacter {
+                    character: &character,
+                };
+                message.send(c_add_msg).map_err(|err| {
+                    println!("[SERVER_MESSAGE] could not send AddCharacter message; error was {err}");
+                })?;
 
                 //Send accept to client
                 println!("[MPSC Send] Sending Accept message");
