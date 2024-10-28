@@ -447,10 +447,21 @@ fn handle_client(
                 match charater_map.lock().unwrap().get(&c_name){
                     Some(_) => {
                         println!("[SERVER_MESSAGE] character {c_name} already joined!");
+                        let estr : String = String::from("Error: Character already joined");
+                        let emsg = Message::Error {
+                            author: stream.clone(),
+                            message_type: MessageType::ERROR,
+                            error_code: ErrorType::PLAYER_EXISTS,
+                            messaage_len: estr.len() as u16,
+                            message: estr.into_bytes(),
+                        };
+                        message.send(emsg).map_err(|err| {
+                            println!("Could not send error message to client {c_name}; Error was {err}");
+                        })?;
+                        continue;
                     },
                     None => println!("[SERVER_MESSAGE] character{c_name} joining")
                 }
-
                 let flags    : u8 = message_data[32];
                 let attack   : u16 = u16::from_le_bytes([message_data[33], message_data[34]]);
                 let defense  : u16 = u16::from_le_bytes([message_data[35], message_data[36]]);
