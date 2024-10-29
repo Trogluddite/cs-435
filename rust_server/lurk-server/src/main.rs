@@ -264,25 +264,45 @@ fn main() -> Result<()> {
     })?;
     println!("[SERVER MESSAGE]: running on socket: {address}");
 
-
-    //let character_map : HashMap<String, Character> = HashMap::new();
-    //let character_map = Arc::new(Mutex::new(character_map));
-
+    /************* Add some rooms *****************/
     let joy_room : Room = Room::new(
         0,
         String::from("Joy Room"),
         String::from("A realm filled with happiness, rainbows and unicorns that poop cotton candy"),
-        vec![1],
+        vec![1,2,3,4],
     );
     let fear_tomb : Room = Room::new(
         1,
         String::from("Fear Tomb"),
         String::from("A terrifying vault redolent with unspeakable horrors. Someone has microwaved fish here."),
+        vec![0,2],
+    );
+    let goblin_bathhouse : Room = Room::new(
+        2,
+        String::from("Goblin Bathhouse"),
+        String::from("Boiling vats of goblin-slime have been super-heated for the pleasure of green monsters."),
+        vec![0,1],
+    );
+    let treasurebox : Room = Room::new(
+        3,
+        String::from("Treasure Box"),
+        String::from("*Obviously* you want to go here, right?"),
+        vec![0],
+    );
+    let doom_chute : Room = Room::new(
+        4,
+        String::from("Doom Chute"),
+        String::from("This appears to be a slide covered in acid. Why would anyone build such a terrible thing?"),
         vec![0],
     );
     let mut game_state = GameState::new();
     game_state.add_room(joy_room);
     game_state.add_room(fear_tomb);
+    game_state.add_room(goblin_bathhouse);
+    game_state.add_room(treasurebox);
+    game_state.add_room(doom_chute);
+    /************* end of add some rooms *****************/
+
     let game_state = Arc::new(Mutex::new(game_state));
 
     let (sender, receiver) = channel();
