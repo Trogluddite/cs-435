@@ -307,7 +307,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-//thread receiver
+//thread receiver -- MPSC 'sends' will be received here
 fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<()> {
     println!("[SERVER_MESSAGE]: handling incomming messages");
 
@@ -625,21 +625,47 @@ fn handle_client(
                     message.send(cmesg).map_err(|err| {
                         println!("Could not send error message to client; Error was {err}");
                     })?;
+
                     println!("[MPSC Send] Sending Room message");
-                    let rdesc : String = String::from("Here's a room description");
-                    let rname : [u8;32] = [0u8;32];
-                    let rmesg = Message::Room {
+                    let game_state = game_state.lock().unwrap();
+                    let start_roomnum = character_ref.curr_room as u8;
+                    let curr_room = game_state.room_hashmap.get(&start_roomnum).unwrap(); //may panic
+                    let mut room_name = [0u8;32];
+                    room_name[..curr_room.name.len()].clone_from_slice(curr_room.name.as_bytes());
+
+                    let room_mesg = Message::Room {
                         author: stream.clone(),
                         message_type: MessageType::ROOM,
-                        room_number: 1,
-                        room_name: rname,
-                        desc_len: rdesc.len() as u16,
-                        room_desc: rdesc.as_bytes().to_vec(),
+                        room_number: character_ref.curr_room,
+                        room_name: room_name,
+                        desc_len: curr_room.desc.len() as u16,
+                        room_desc: curr_room.desc.as_bytes().to_vec(),
                     };
-                    message.send(rmesg).map_err(|err|{
+                    message.send(room_mesg).map_err(|err|{
                         println!("Could not send room message to client; Error was {err}");
                     })?;
+                    /***** end room message *****/
 
+
+                    println!("[MPSC Send] Sending connection message for connected room_ids {:?}", curr_room.connections);
+                    for room_id in &curr_room.connections{
+                        let conn_room = game_state.room_hashmap.get(&room_id).unwrap();
+                        let mut conn_room_name = [0u8;32];
+                        conn_room_name[..conn_room.name.len()].clone_from_slice(conn_room.name.as_bytes());
+                        let conn_mesg = Message::Connection {
+                            author: stream.clone(),
+                            message_type: MessageType::CONNECTION,
+                            room_number: *room_id as u16,  //FIXME: inconsistent sizes for room ID
+                            //between this and Room struct
+                            room_name: conn_room_name,
+                            desc_len: conn_room.desc.len() as u16,
+                            room_desc: conn_room.desc.as_bytes().to_vec(),
+                        };
+                        message.send(conn_mesg).map_err(|err|{
+                            println!("Could not connection message to client; Error was {err}");
+                        })?;
+                    }
+                    /***** end connection messages *****/
                     game_started = true;
                 }
             }
