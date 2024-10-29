@@ -212,6 +212,47 @@ impl Character{
     }
 }
 
+// Used by game state; conversions will need to be made for Room messages
+#[allow(dead_code)] //FIXME later
+struct Room{
+    id_num : u8,
+    name : String,
+    desc : String,
+    connections : Vec<u8>,
+
+}
+#[allow(dead_code)] //FIXME later
+impl Room{
+    fn new(id_num: u8, name: String, desc: String, connections: Vec<u8>) -> Room{
+        Room{id_num, name, desc, connections,}
+    }
+}
+
+//TODO: Should game state validate room connections?
+#[allow(dead_code)]
+struct GameState{
+    room_hashmap: HashMap<u8, Room>,
+    character_map: HashMap<String, Character>,
+}
+#[allow(dead_code)]
+impl GameState{
+    fn new() -> GameState{
+        GameState{
+            room_hashmap: HashMap::new(),
+            character_map: HashMap::new(),
+        }
+    }
+    //TODO: these may be redundant; experiment with whetehr it's easier to use direct insert or
+    //methods
+    fn add_room(&mut self, room : Room) -> Option<Room> {
+        self.room_hashmap.insert(room.id_num, room)
+    }
+    fn add_character(&mut self, character : &mut Character) {
+        self.character_map.insert(String::clone(&character.name), Clone::clone(character));
+    }
+}
+
+
 type Result<T> = result::Result<T, ()>;
 
 fn main() -> Result<()> {
@@ -224,8 +265,25 @@ fn main() -> Result<()> {
     println!("[SERVER MESSAGE]: running on socket: {address}");
 
 
-    let character_map : HashMap<String, Character> = HashMap::new();
-    let character_map = Arc::new(Mutex::new(character_map));
+    //let character_map : HashMap<String, Character> = HashMap::new();
+    //let character_map = Arc::new(Mutex::new(character_map));
+
+    let joy_room : Room = Room::new(
+        0,
+        String::from("Joy Room"),
+        String::from("A realm filled with happiness, rainbows and unicorns that poop cotton candy"),
+        vec![1],
+    );
+    let fear_tomb : Room = Room::new(
+        1,
+        String::from("Fear Tomb"),
+        String::from("A terrifying vault redolent with unspeakable horrors. Someone has microwaved fish here."),
+        vec![0],
+    );
+    let mut game_state = GameState::new();
+    game_state.add_room(joy_room);
+    game_state.add_room(fear_tomb);
+    let game_state = Arc::new(Mutex::new(game_state));
 
     let (sender, receiver) = channel();
     let receiver = Arc::new(Mutex::new(receiver));  //shadow 'receiver' w/ ARC & mutex
@@ -237,9 +295,9 @@ fn main() -> Result<()> {
             Ok(stream) => {
                 let stream = Arc::new(stream);
                 let sender = sender.clone();
-                let character_map = Arc::clone(&character_map);
+                let game_state = Arc::clone(&game_state);
                 println!("[SERVER MESSAGE]: New connection, spawning thread for client {:?}", stream.peer_addr().unwrap());
-                thread::spawn(move || handle_client(stream, sender, character_map));
+                thread::spawn(move || handle_client(stream, sender, game_state));
             }
             Err(e) => {
                 println!("Error: {}",e);
@@ -370,7 +428,7 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
 fn handle_client(
     stream: Arc<TcpStream>,
     message: Sender<Message>,
-    charater_map: Arc<Mutex<HashMap<String, Character>>>) -> Result<()> {
+    game_state: Arc<Mutex<GameState>>) -> Result<()> {
     /***************** < server state params> *****************/
     // these will be defaults for each connecting client
     let stat_limit : u16 = 5000;
@@ -444,7 +502,8 @@ fn handle_client(
                 // so we read protocol positions shifted 1 byte left (e.g., byte 1 in protocol
                 // is now byte 0.
                 let c_name   : String = String::from_utf8_lossy(&message_data[0..32]).to_string();
-                match charater_map.lock().unwrap().get(&c_name){
+                match game_state.lock().unwrap().character_map.get(&c_name){
+                //match charater_map.lock().unwrap().get(&c_name){
                     Some(_) => {
                         println!("[SERVER_MESSAGE] character {c_name} already joined!");
                         let estr : String = String::from("Error: Character already joined");
@@ -513,9 +572,7 @@ fn handle_client(
                 character_ref.curr_room = 0;
                 player_joined = true;
 
-                charater_map.lock().unwrap().insert(
-                    String::from(&character_ref.name), Clone::clone(character_ref));
-
+                game_state.lock().unwrap().add_character(character_ref);
                 //Send accept to client
                 println!("[MPSC Send] Sending Accept message");
                 let acceptmsg = Message::Accept {
@@ -580,7 +637,7 @@ fn handle_client(
                         room_desc: rdesc.as_bytes().to_vec(),
                     };
                     message.send(rmesg).map_err(|err|{
-                        println!("Could not send room message to clienbt; Error was {err}");
+                        println!("Could not send room message to client; Error was {err}");
                     })?;
 
                     game_started = true;
