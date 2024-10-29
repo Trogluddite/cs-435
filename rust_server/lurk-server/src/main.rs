@@ -36,6 +36,8 @@ const WELCOME:&'static str = "
     `---'    `----'   ;      /    \\,.,,,/
                        `----`              ";
 
+type Result<T> = result::Result<T, ()>;
+
 struct MessageType;
 impl MessageType{
     const ACCEPT:       u8 = 8;
@@ -119,7 +121,7 @@ enum Message{
         author:         Arc<TcpStream>,
         message_type:   u8,
         error_code:     u8,
-        messaage_len:   u16,
+        message_len:   u16,
         message:        Vec<u8>,
     },
     Fight{
@@ -215,23 +217,20 @@ impl Character{
 // Used by game state; conversions will need to be made for Room messages
 #[allow(dead_code)] //FIXME later
 struct Room{
-    id_num : u8,
+    id_num : u16,
     name : String,
     desc : String,
-    connections : Vec<u8>,
+    connections : Vec<u16>,
 
 }
-#[allow(dead_code)] //FIXME later
 impl Room{
-    fn new(id_num: u8, name: String, desc: String, connections: Vec<u8>) -> Room{
+    fn new(id_num: u16, name: String, desc: String, connections: Vec<u16>) -> Room{
         Room{id_num, name, desc, connections,}
     }
 }
 
-//TODO: Should game state validate room connections?
-#[allow(dead_code)]
 struct GameState{
-    room_hashmap: HashMap<u8, Room>,
+    room_hashmap: HashMap<u16, Room>,
     character_map: HashMap<String, Character>,
 }
 #[allow(dead_code)]
@@ -242,8 +241,6 @@ impl GameState{
             character_map: HashMap::new(),
         }
     }
-    //TODO: these may be redundant; experiment with whetehr it's easier to use direct insert or
-    //methods
     fn add_room(&mut self, room : Room) -> Option<Room> {
         self.room_hashmap.insert(room.id_num, room)
     }
@@ -253,11 +250,7 @@ impl GameState{
 }
 
 
-type Result<T> = result::Result<T, ()>;
-
 fn main() -> Result<()> {
-    //let _args: Vec<String> = env::args().collect();
-    // assuming static settings for now; check this later
     let address = format!("{}:{}",SERVER_ADDRESS, SERVER_PORT);
     let listener = TcpListener::bind(&address).map_err( |_err| {
         println!("[SERVER MESSAGE]: Error: could not bind to address {address}");
@@ -307,7 +300,7 @@ fn main() -> Result<()> {
 
     let (sender, receiver) = channel();
     let receiver = Arc::new(Mutex::new(receiver));  //shadow 'receiver' w/ ARC & mutex
-    thread::spawn(move || handle_received_messages(receiver)); // spawn server thread
+    thread::spawn(move || handle_mpsc_thread_messages(receiver)); // spawn server thread
 
     //listen for incoming connections
     for stream in listener.incoming() {
@@ -328,7 +321,7 @@ fn main() -> Result<()> {
 }
 
 //thread receiver -- MPSC 'sends' will be received here
-fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<()> {
+fn handle_mpsc_thread_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<()> {
     println!("[SERVER_MESSAGE]: handling incomming messages");
 
     loop{
@@ -383,12 +376,12 @@ fn handle_received_messages(receiver: Arc<Mutex<Receiver<Message>>>) -> Result<(
                     println!("Couldn't send connection message to client, with error {}", err);
                 })?;
             }
-            Message::Error { author, message_type, error_code, messaage_len, message } => {
+            Message::Error { author, message_type, error_code, message_len, message } => {
                 println!("[MPSC RECEIVED] Error message from: {:?}", author.peer_addr().unwrap());
                 let mut send_message: Vec<u8> = Vec::new();
                 send_message.push(message_type);
                 send_message.push(error_code);
-                send_message.extend(messaage_len.to_le_bytes());
+                send_message.extend(message_len.to_le_bytes());
                 send_message.extend(message);
 
                 author.as_ref().write_all(&send_message).map_err(|err| {
@@ -531,7 +524,7 @@ fn handle_client(
                             author: stream.clone(),
                             message_type: MessageType::ERROR,
                             error_code: ErrorType::PLAYER_EXISTS,
-                            messaage_len: estr.len() as u16,
+                            message_len: estr.len() as u16,
                             message: estr.into_bytes(),
                         };
                         message.send(emsg).map_err(|err| {
@@ -564,7 +557,7 @@ fn handle_client(
                         author: stream.clone(),
                         message_type: MessageType::ERROR,
                         error_code: ErrorType::STAT_ERROR,
-                        messaage_len: estr.len() as u16,
+                        message_len: estr.len() as u16,
                         message: estr.into_bytes(),
                     };
                     message.send(emsg).map_err(|err| {
@@ -615,7 +608,7 @@ fn handle_client(
                         author: stream.clone(),
                         message_type: MessageType::ERROR,
                         error_code: ErrorType::NOT_READY,
-                        messaage_len: estr.len() as u16,
+                        message_len: estr.len() as u16,
                         message: estr.into_bytes(),
                     };
                     println!("[MPSC Send] Sending Error message");
@@ -648,7 +641,7 @@ fn handle_client(
 
                     println!("[MPSC Send] Sending Room message");
                     let game_state = game_state.lock().unwrap();
-                    let start_roomnum = character_ref.curr_room as u8;
+                    let start_roomnum = character_ref.curr_room;
                     let curr_room = game_state.room_hashmap.get(&start_roomnum).unwrap(); //may panic
                     let mut room_name = [0u8;32];
                     room_name[..curr_room.name.len()].clone_from_slice(curr_room.name.as_bytes());
@@ -657,7 +650,7 @@ fn handle_client(
                         author: stream.clone(),
                         message_type: MessageType::ROOM,
                         room_number: character_ref.curr_room,
-                        room_name: room_name,
+                        room_name,
                         desc_len: curr_room.desc.len() as u16,
                         room_desc: curr_room.desc.as_bytes().to_vec(),
                     };
@@ -675,8 +668,7 @@ fn handle_client(
                         let conn_mesg = Message::Connection {
                             author: stream.clone(),
                             message_type: MessageType::CONNECTION,
-                            room_number: *room_id as u16,  //FIXME: inconsistent sizes for room ID
-                            //between this and Room struct
+                            room_number: *room_id,
                             room_name: conn_room_name,
                             desc_len: conn_room.desc.len() as u16,
                             room_desc: conn_room.desc.as_bytes().to_vec(),
