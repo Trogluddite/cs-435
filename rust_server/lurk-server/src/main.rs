@@ -803,7 +803,6 @@ fn handle_client(
                 /********** End of Send Character messages ***********/
             }
             MessageType::FIGHT => {}
-
             MessageType::LEAVE => {
                 if !player_joined{
                     println!("[SERVER_MESSAGE] Received 'leave' message, but no player joined. Doing nothing.");
@@ -816,10 +815,25 @@ fn handle_client(
             }
             MessageType::LOOT => {}
             MessageType::MESSAGE => {}
-            MessageType::PVPFIGHT => {}
-            MessageType::VERSION => {}
+            MessageType::PVPFIGHT => {
+                println!("[SERVER_MESSAGE] snding PVP Disabled message");
+                let estr : String = String::from("Error: PVP_DISABLED");
+                let emsg = Message::Error {
+                    author: stream.clone(),
+                    message_type: MessageType::ERROR,
+                    error_code: ErrorType::PVP_DISABLED,
+                    message_len: estr.len() as u16,
+                    message: estr.into_bytes(),
+                };
+                message.send(emsg).map_err(|err| {
+                    println!("Could not send error message; Error was {err}");
+                })?;
+            }
 
             /**************** < non-client message types>*******************/
+            MessageType::VERSION => {
+                println!("[SERVER_MESSAGE] The client sent a 'Version' message; we're ignoring it");
+            }
             MessageType::ACCEPT => {
                 println!("[SERVER_MESSAGE] The client sent an 'Accept' message; we're ignoring it");
             }
