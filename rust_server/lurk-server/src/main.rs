@@ -731,7 +731,7 @@ fn handle_client(
                 //TODO: guard on invalid room
 
                 let mut game_state = game_state.lock().unwrap();
-                let mut character : &mut Character = game_state.character_map.get_mut(&character_ref.name).unwrap();
+                let character : &mut Character = game_state.character_map.get_mut(&character_ref.name).unwrap();
                 character.curr_room = target_room;
                 /********** Send Room message ***********/
                 println!("[MPSC Send] Sending Room message");
@@ -802,7 +802,75 @@ fn handle_client(
                 }
                 /********** End of Send Character messages ***********/
             }
-            MessageType::FIGHT => {}
+            MessageType::FIGHT => {
+                println!("Got fight message");
+                for (k,v) in &mut game_state.lock().unwrap().character_map{
+                    println!("processing character {}",k);
+                    if (v.flags & CharacterFlags::IS_MONSTER) == CharacterFlags::IS_MONSTER{
+                        println!("charactr {} is a monster",k);
+                        let mut game_state = game_state.lock().unwrap();
+                        let player_c = &mut game_state.character_map.get_mut(&character_ref.name).unwrap();
+                        if v.curr_room != player_c.curr_room{
+                            println!("character {} is not in room {}", k, player_c.curr_room);
+                        }
+                        else{
+                            let attack_remain = v.attack - player_c.defense;
+                            println!("attack_remain: {}",attack_remain);
+                            player_c.health = player_c.health - attack_remain as i16;
+                            println!("player health: {}",player_c.health);
+                            if player_c.health <= 0{
+                                player_c.flags = player_c.flags & !CharacterFlags::IS_ALIVE;
+                            }
+                        }
+                    }
+                    else{
+                        for(k,v) in &mut game_state.lock().unwrap().character_map{
+                            println!("charaacter is attacking monster {}",k);
+                            if (v.flags & CharacterFlags::IS_MONSTER) != CharacterFlags::IS_MONSTER{
+                                continue;
+                            }
+                            else{
+                                let player_attack = game_state.lock().unwrap().character_map
+                                    .get(&character_ref.name).unwrap().attack;
+                                let attack_remain = v.defense - player_attack;
+                                v.health = v.health - attack_remain as i16;
+                            }
+                            if v.health <= 0{
+                                v.flags = v.flags & !CharacterFlags::IS_ALIVE;
+                            }
+                        }
+                    }
+                }
+                /********** Send Character messages ***********/
+                println!("[MPSC Send] Sending Character messages");
+
+                let game_state = game_state.lock().unwrap();
+                for character in game_state.character_map.keys(){
+                    let character = game_state.character_map.get(character).unwrap();
+                    //fixme: only send character messags for current room?
+                    let mut namebuff = [0u8;32];
+                    namebuff[..character.name.len()].clone_from_slice(character.name[..character.name.len()].as_bytes());
+                    let cmesg = Message::Character {
+                        author: stream.clone(),
+                        message_type: MessageType::CHARACTER,
+                        character_name: namebuff,
+                        flags: character.flags,
+                        attack: character.attack,
+                        defense: character.defense,
+                        regen: character.regen,
+                        health: character.health,
+                        gold: character.gold,
+                        curr_room: character.curr_room,
+                        desc_len: character.desc.len() as u16,
+                        desc: character.desc.as_bytes().to_vec(),
+                    };
+                    message.send(cmesg).map_err(|err| {
+                        println!("Could not send error message to client; Error was {err}");
+                    })?;
+                }
+                /********** End of Send Character messages ***********/
+
+            }
             MessageType::LEAVE => {
                 if !player_joined{
                     println!("[SERVER_MESSAGE] Received 'leave' message, but no player joined. Doing nothing.");
