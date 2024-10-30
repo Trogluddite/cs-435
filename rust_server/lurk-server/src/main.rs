@@ -282,13 +282,13 @@ fn main() -> Result<()> {
         1,
         String::from("Fear Tomb"),
         String::from("A terrifying vault redolent with unspeakable horrors. Someone has microwaved fish here."),
-        vec![0,2],
+        vec![0],
     );
     let goblin_bathhouse : Room = Room::new(
         2,
         String::from("Goblin Bathhouse"),
         String::from("Boiling vats of goblin-slime have been super-heated for the pleasure of green monsters."),
-        vec![0,1],
+        vec![0],
     );
     let treasurebox : Room = Room::new(
         3,
@@ -318,7 +318,7 @@ fn main() -> Result<()> {
         String::from("Cowardly Kitten"),
     ];
     let monster_descriptions = [
-        String::from("A tearful goblin. Have mercy: He hates his job."),
+        String::from("A sobbing monstrosity. Have mercy: He hates his job."),
         String::from("His poops are cubes, and he won't stop talking about it."),
         String::from("Is it a cat? Is it a bat? It's some kind of mammal and it sure is mad about that."),
         String::from("She's biting my toes OMG."),
@@ -732,7 +732,10 @@ fn handle_client(
 
                 let mut game_state = game_state.lock().unwrap();
                 let character : &mut Character = game_state.character_map.get_mut(&character_ref.name).unwrap();
+                //TODO: This is a dumb borrow-checker workaround ... I couldn't modify the
+                //game-state object the way I wanted :/
                 character.curr_room = target_room;
+                character_ref.curr_room = target_room;
                 /********** Send Room message ***********/
                 println!("[MPSC Send] Sending Room message");
                 let character_roomnum = target_room;
@@ -804,50 +807,56 @@ fn handle_client(
             }
             MessageType::FIGHT => {
                 println!("Got fight message");
-                for (k,v) in &mut game_state.lock().unwrap().character_map{
-                    println!("processing character {}",k);
+                let game_state = &mut game_state.lock().unwrap();
+                let curr_room = character_ref.curr_room;
+                let mut monster_hits : Vec<u16> = Vec::new();
+
+                for (k,v) in &mut game_state.character_map{
                     if (v.flags & CharacterFlags::IS_MONSTER) == CharacterFlags::IS_MONSTER{
-                        println!("charactr {} is a monster",k);
-                        let mut game_state = game_state.lock().unwrap();
-                        let player_c = &mut game_state.character_map.get_mut(&character_ref.name).unwrap();
-                        if v.curr_room != player_c.curr_room{
-                            println!("character {} is not in room {}", k, player_c.curr_room);
+                        if v.curr_room != curr_room {
+                            println!("character {} is not in room {}", k, curr_room);
+                            continue;
+                        }
+                        if (v.flags & CharacterFlags::IS_ALIVE) != CharacterFlags::IS_ALIVE{
+                            continue;
                         }
                         else{
-                            let attack_remain = v.attack - player_c.defense;
-                            println!("attack_remain: {}",attack_remain);
-                            player_c.health = player_c.health - attack_remain as i16;
-                            println!("player health: {}",player_c.health);
-                            if player_c.health <= 0{
-                                player_c.flags = player_c.flags & !CharacterFlags::IS_ALIVE;
+                            let (mut attack_remain,a_underflow) = v.attack.overflowing_sub(character_ref.defense);
+                            if a_underflow{
+                                attack_remain = 0;
                             }
-                        }
-                    }
-                    else{
-                        for(k,v) in &mut game_state.lock().unwrap().character_map{
-                            println!("charaacter is attacking monster {}",k);
-                            if (v.flags & CharacterFlags::IS_MONSTER) != CharacterFlags::IS_MONSTER{
-                                continue;
+                            monster_hits.push(attack_remain);
+                            let (mut hit_minus_def, underflow) = v.defense.overflowing_sub(character_ref.attack);
+                            if underflow {
+                                hit_minus_def = 0;
                             }
-                            else{
-                                let player_attack = game_state.lock().unwrap().character_map
-                                    .get(&character_ref.name).unwrap().attack;
-                                let attack_remain = v.defense - player_attack;
-                                v.health = v.health - attack_remain as i16;
-                            }
-                            if v.health <= 0{
+                            println!("health before: {}",v.health);
+                            println!("v.health: {}, hit_minus_def: {}",v.health, hit_minus_def);
+                            v.health = v.health - hit_minus_def as i16;
+                            if v.health <= 0 {
                                 v.flags = v.flags & !CharacterFlags::IS_ALIVE;
                             }
+                            println!("health after: {}", v.health);
                         }
                     }
+
                 }
+                let hit_sum : u16 = monster_hits.iter().sum();
+                character_ref.health = character_ref.health - hit_sum as i16;
+                game_state.character_map.get_mut(&character_ref.name).unwrap().health = character_ref.health;
+                if character_ref.health <= 0{
+                    character_ref.flags = character_ref.flags & !CharacterFlags::IS_ALIVE;
+                    game_state.character_map.get_mut(&character_ref.name).unwrap().flags = character_ref.flags;
+                }
+
                 /********** Send Character messages ***********/
                 println!("[MPSC Send] Sending Character messages");
-
-                let game_state = game_state.lock().unwrap();
                 for character in game_state.character_map.keys(){
                     let character = game_state.character_map.get(character).unwrap();
-                    //fixme: only send character messags for current room?
+                    if character.curr_room != character_ref.curr_room{
+                        println!("Character {} is not in the player's current room", character.name);
+                        continue;
+                    }
                     let mut namebuff = [0u8;32];
                     namebuff[..character.name.len()].clone_from_slice(character.name[..character.name.len()].as_bytes());
                     let cmesg = Message::Character {
