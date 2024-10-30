@@ -70,9 +70,9 @@ impl ErrorType{
     const PVP_DISABLED: u8 = 8;
 }
 
-struct PlayerFlags;
+struct CharacterFlags;
 #[allow(dead_code)] //FIXME: later
-impl PlayerFlags{
+impl CharacterFlags{
     const IS_ALIVE:     u8 = 0b10000000;
     const JOIN_BATTLE:  u8 = 0b01000000;
     const IS_MONSTER:   u8 = 0b00100000;
@@ -184,7 +184,6 @@ enum Message{
 #[allow(dead_code)] //FIXME later
 #[derive(Clone, Debug)]
 struct Character{
-    conn:       Arc<TcpStream>,
     name:       String,
     is_active:  bool,
     flags:      u8,
@@ -197,9 +196,8 @@ struct Character{
     desc:       String,
 }
 impl Character{
-    fn new(conn: Arc<TcpStream>, name: String, desc: String) -> Character{
+    fn new(name: String, desc: String) -> Character{
         Character{
-            conn,
             name,
             desc,
             is_active : true,
@@ -210,6 +208,22 @@ impl Character{
             health: 100,
             gold: 0,
             curr_room: 0,
+        }
+    }
+    fn new_monster( name: String, desc:String,
+                    attack:u16, defense:u16, regen:u16,
+                    health:i16, gold:u16, curr_room:u16) -> Character{
+        Character{
+            name,
+            desc,
+            is_active : true,
+            flags: CharacterFlags::IS_ALIVE | CharacterFlags::IS_MONSTER,
+            attack,
+            defense,
+            regen,
+            health,
+            gold,
+            curr_room,
         }
     }
 }
@@ -295,6 +309,33 @@ fn main() -> Result<()> {
     game_state.add_room(treasurebox);
     game_state.add_room(doom_chute);
     /************* end of add some rooms *****************/
+
+    /************* Add some monsters *****************/
+    let monster_names = [
+        String::from("Sad Goblin"),
+        String::from("Shrieking Wombat"),
+        String::from("Tiny Fur Demon"),
+        String::from("Cowardly Kitten"),
+    ];
+    let monster_descriptions = [
+        String::from("A tearful goblin. Have mercy: He hates his job."),
+        String::from("His poops are cubes, and he won't stop talking about it."),
+        String::from("Is it a cat? Is it a bat? It's some kind of mammal and it sure is mad about that."),
+        String::from("She's biting my toes OMG."),
+    ];
+
+    for i in 0..monster_names.len(){
+        let mut monster = Character::new_monster(
+            String::clone(&monster_names[i]),
+            String::clone(&monster_descriptions[i]),
+            25, 25, 25, 25, //generic stats for now
+            100,            // some gold to loot
+            (i + 1) as u16, //just pepper the first four rooms with some monsters,
+        );
+        game_state.add_character(&mut monster);
+    }
+    /************* end of Add some monsters *****************/
+
 
     let game_state = Arc::new(Mutex::new(game_state));
 
@@ -450,7 +491,7 @@ fn handle_client(
     let mut player_joined : bool = false;
     /***************** < server state params> *****************/
 
-    let mut character : Character = Character::new(stream.clone(), String::new(), String::new());
+    let mut character : Character = Character::new(String::new(), String::new());
     println!("[SERVER_MESSAGE] Adding character to hashmap");
     let character_ref = &mut character;
 
@@ -514,7 +555,7 @@ fn handle_client(
                 // note on ranges -- we've already popped the first byte out of the stream, so
                 // so we read protocol positions shifted 1 byte left (e.g., byte 1 in protocol
                 // is now byte 0.
-                let c_name   : String = String::from_utf8_lossy(&message_data[0..32]).to_string();
+                let c_name : String = String::from_utf8_lossy(&message_data[0..32]).to_string();
                 match game_state.lock().unwrap().character_map.get(&c_name){
                 //match charater_map.lock().unwrap().get(&c_name){
                     Some(_) => {
@@ -567,8 +608,8 @@ fn handle_client(
                 };
 
                 //set stats & return character message
-                if flags == PlayerFlags::ALL_FLAGS_SET || flags == PlayerFlags::NO_FLAGS_SET {
-                    character_ref.flags = PlayerFlags::IS_ALIVE | PlayerFlags::IS_READY;
+                if flags == CharacterFlags::ALL_FLAGS_SET || flags == CharacterFlags::NO_FLAGS_SET {
+                    character_ref.flags = CharacterFlags::IS_ALIVE | CharacterFlags::IS_READY;
                 }
                 //TODO: Handle reserved flags set??
                 else{
@@ -681,7 +722,86 @@ fn handle_client(
                     game_started = true;
                 }
             }
-            MessageType::CHANGEROOM => {}
+            MessageType::CHANGEROOM => {
+                let mut t_room_buff = [0u8; 2]; // 2 bytes for u16
+                reader.read_exact(&mut t_room_buff).map_err(|err|{
+                    println!("[GAME SERVER] Could ChangeRoom message; error was {err}");
+                })?;
+                let target_room = u16::from_le_bytes([t_room_buff[0], t_room_buff[1]]);
+                //TODO: guard on invalid room
+
+                let mut game_state = game_state.lock().unwrap();
+                let mut character : &mut Character = game_state.character_map.get_mut(&character_ref.name).unwrap();
+                character.curr_room = target_room;
+                /********** Send Room message ***********/
+                println!("[MPSC Send] Sending Room message");
+                let character_roomnum = target_room;
+                let curr_room = game_state.room_hashmap.get(&character_roomnum).unwrap(); //may panic
+                let mut room_name = [0u8;32];
+                room_name[..curr_room.name.len()].clone_from_slice(curr_room.name.as_bytes());
+
+                let room_mesg = Message::Room {
+                    author: stream.clone(),
+                    message_type: MessageType::ROOM,
+                    room_number: character_ref.curr_room,
+                    room_name,
+                    desc_len: curr_room.desc.len() as u16,
+                    room_desc: curr_room.desc.as_bytes().to_vec(),
+                };
+                message.send(room_mesg).map_err(|err|{
+                    println!("Could not send room message to client; Error was {err}");
+                })?;
+                /***** end room message *****/
+
+                /********** Send Connection messages ***********/
+                println!("[MPSC Send] Sending connection messages for connected room_ids {:?}", curr_room.connections);
+                for room_id in &curr_room.connections{
+                    let conn_room = game_state.room_hashmap.get(&room_id).unwrap();
+                    let mut conn_room_name = [0u8;32];
+                    conn_room_name[..conn_room.name.len()].clone_from_slice(conn_room.name.as_bytes());
+                    let conn_mesg = Message::Connection {
+                        author: stream.clone(),
+                        message_type: MessageType::CONNECTION,
+                        room_number: *room_id,
+                        room_name: conn_room_name,
+                        desc_len: conn_room.desc.len() as u16,
+                        room_desc: conn_room.desc.as_bytes().to_vec(),
+                    };
+                    message.send(conn_mesg).map_err(|err|{
+                        println!("Could not connection message to client; Error was {err}");
+                    })?;
+                }
+                /***** end connection messages *****/
+
+                /********** Send Character messages ***********/
+                println!("[MPSC Send] Sending Character messages");
+                for character in game_state.character_map.keys(){
+                    let character = game_state.character_map.get(character).unwrap();
+                    if character.curr_room != curr_room.id_num{
+                        continue;
+                    }
+                    let mut namebuff = [0u8;32];
+                    namebuff[..character.name.len()].clone_from_slice(character.name[..character.name.len()].as_bytes());
+                    let cmesg = Message::Character {
+                        author: stream.clone(),
+                        message_type: MessageType::CHARACTER,
+                        character_name: namebuff,
+                        flags: character.flags,
+                        attack: character.attack,
+                        defense: character.defense,
+                        regen: character.regen,
+                        health: character.health,
+                        gold: character.gold,
+                        curr_room: character.curr_room,
+                        desc_len: character.desc.len() as u16,
+                        desc: character.desc.as_bytes().to_vec(),
+                    };
+                    message.send(cmesg).map_err(|err| {
+                        println!("Could not send error message to client; Error was {err}");
+                    })?;
+                }
+                /********** End of Send Character messages ***********/
+            }
             MessageType::FIGHT => {}
 
             MessageType::LEAVE => {
