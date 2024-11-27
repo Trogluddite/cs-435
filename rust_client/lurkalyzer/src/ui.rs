@@ -1,10 +1,10 @@
 #[allow(unused_imports)]        //FIXME
 use ratatui::{
   layout::{Constraint, Direction, Layout, Rect},
-  style::{Color, Style},
+  style::{Color, Style, Stylize},
   symbols::border,
   text::{Line,Span,Text},
-  widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
+  widgets::{Block, Borders, Clear, List, ListItem, Table, Row, Paragraph, Wrap},
   Frame,
 };
 
@@ -24,17 +24,30 @@ pub fn ui(frame: &mut Frame, app: &App){
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Percentage(50),
-            Constraint::Percentage(50)
+            Constraint::Percentage(50),
         ])
         .split(outer_layout[1]);
 
     let title = Line::from(" Lurkalyzer ");
     let footer = Line::from(" Press (q) to quit ");
-    let block = Block::bordered()
+    let header_block = Block::bordered()
         .title(title.centered())
         .title_bottom(footer.centered())
         .border_set(border::DOUBLE);
-    frame.render_widget(block, outer_layout[0]);
+
+    let line: Line = vec![
+        "mode".blue(),
+        ": ".into(),
+        "raw ".red().bold().into(),
+        " | ".into(),
+        "endiannes: ".blue(),
+        "little ".red().bold().into(),
+        " | ".into(),
+        "send type".blue(),
+        ": ".into(),
+        "immediate ".red().bold().into(),
+    ].into();
+    frame.render_widget(Paragraph::new(line).block(header_block), outer_layout[0]);
 
     let outgoing_title = Line::from(" Outgoing ");
     let incomming_title = Line::from(" Incomming ");
