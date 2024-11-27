@@ -1,3 +1,4 @@
+#[allow(dead_code)]          //FIXME
 use std::{error::Error, io};
 
 use ratatui::{
@@ -11,11 +12,11 @@ use ratatui::{
 };
 
 mod app;
-//mod ui;
+mod ui;
 
 use crate::{
-    app::{App, Screen},
-    //ui::ui,
+    app::{App, CurrentScreen},
+    ui::ui,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -45,9 +46,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[allow(unused_variables)]   //FIXME
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<bool> {
     loop {
-        //terminal.draw(|frame| ui(frame, app))?;
+        terminal.draw(|frame| ui(frame, app))?;
         if let Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Release{
                 // we only care about KeyEventKind::press
@@ -55,16 +57,19 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
             }
             match key.code {
                 KeyCode::Char('m') => {
-                    app.current_screen = Screen::Main;
+                    app.current_screen = CurrentScreen::Main;
                 }
                 KeyCode::Char('c') => {
-                    app.current_screen = Screen::Connfiguration;
+                    app.current_screen = CurrentScreen::Configuration;
                 }
                 KeyCode::Char('r') => {
-                    app.current_screen = Screen::RawMode;
+                    app.current_screen = CurrentScreen::RawMode;
                 }
                 KeyCode::Char('l') => {
-                    app.current_screen = Screen::LurkMode;
+                    app.current_screen = CurrentScreen::LurkMode;
+                }
+                KeyCode::Char('q') => {
+                    return Ok(true);
                 }
                 // add exit screen
                 // add type/edit handlers
