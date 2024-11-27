@@ -16,8 +16,8 @@ pub fn ui(frame: &mut Frame, app: &App){
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Percentage(75),
-            Constraint::Percentage(25),
+            Constraint::Length(3),
+            Constraint::Percentage(100),
         ])
         .split(frame.area());
     let inner_layout = Layout::default()
@@ -36,12 +36,12 @@ pub fn ui(frame: &mut Frame, app: &App){
         .border_set(border::DOUBLE);
     frame.render_widget(block, outer_layout[0]);
 
-    let cfg_title = Line::from(" Config ");
+    let outgoing_title = Line::from(" Outgoing ");
     let incomming_title = Line::from(" Incomming ");
-    let cfg_block = Block::bordered()
-        .title(cfg_title.centered())
+    let outgoing_block = Block::bordered()
+        .title(outgoing_title.centered())
         .border_set(border::DOUBLE);
-    frame.render_widget(cfg_block, inner_layout[0]);
+    frame.render_widget(outgoing_block, inner_layout[0]);
 
     let incomming_block = Block::bordered()
         .title(incomming_title.centered())
