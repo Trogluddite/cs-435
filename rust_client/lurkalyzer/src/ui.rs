@@ -27,6 +27,20 @@ pub fn ui(frame: &mut Frame, app: &App){
             Constraint::Percentage(50),
         ])
         .split(outer_layout[1]);
+    let inner_outgoing_line = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(5),
+        ])
+        .split(inner_layout[0]);
+    let inner_outgoing_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Max(6),
+            Constraint::Max(6),
+        ])
+        .split(inner_outgoing_line[0]);
+
 
     let title = Line::from(" Lurkalyzer ");
     let footer = Line::from(" Press (q) to quit ");
@@ -51,10 +65,29 @@ pub fn ui(frame: &mut Frame, app: &App){
 
     let outgoing_title = Line::from(" Outgoing ");
     let incomming_title = Line::from(" Incomming ");
+
+    let inner_block1 = Block::bordered()
+        .title(Line::from("0").left_aligned())
+        .border_set(border::EMPTY);
+    let inner_block2 = Block::bordered()
+        .title(Line::from("1").left_aligned())
+        .border_set(border::EMPTY);
+
     let outgoing_block = Block::bordered()
         .title(outgoing_title.centered())
         .border_set(border::DOUBLE);
+    let inner1 = outgoing_block.inner(inner_outgoing_layout[0]);
+    let inner2 = outgoing_block.inner(inner_outgoing_layout[1]);
     frame.render_widget(outgoing_block, inner_layout[0]);
+
+    let byte_line1: Line = vec![
+        "BE".green().into(),
+    ].into();
+    let byte_line2: Line = vec![
+        "AD".blue().into(),
+    ].into();
+    frame.render_widget(Paragraph::new(byte_line1).block(inner_block1), inner1);
+    frame.render_widget(Paragraph::new(byte_line2).block(inner_block2), inner2);
 
     let incomming_block = Block::bordered()
         .title(incomming_title.centered())
