@@ -1,0 +1,10 @@
+[workspace]
+
+members = [ 
+  "lurkalyzer",
+  "lurk-gamestate",
+  "lurk-messages",
+  "lurk-server",
+]
+
+resolver = "2"

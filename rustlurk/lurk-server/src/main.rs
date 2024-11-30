@@ -4,12 +4,8 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::net::{TcpListener, TcpStream, Shutdown};
 
-mod state_objs;
-mod message_types;
-use crate::{
-    state_objs::{Character, CharacterFlags, GameState, Room},
-    message_types::{ErrorType, Message, MessageType},
-};
+use::lurk_messages::{ErrorType, Message, MessageType};
+use::lurk_gamestate::{Character, CharacterFlags, GameState, Room};
 
 type Result<T> = result::Result<T, ()>;
 
