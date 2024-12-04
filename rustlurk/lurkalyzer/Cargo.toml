@@ -6,4 +6,6 @@ edition = "2021"
 [dependencies]
 crossterm = "0.28.1"
 ratatui = "0.29.0"
+log = "0.4"               #logging facade
+simple-logging = "2.0.2"  #log backend
 lurk-messages = {path = "../lurk-messages/"}

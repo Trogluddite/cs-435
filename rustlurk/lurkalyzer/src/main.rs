@@ -1,8 +1,6 @@
 #[allow(unused_imports)]          //FIXME
 use std::{error::Error, result, thread, io};
-use std::net::{TcpListener, TcpStream, Shutdown};
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use log::{info, LevelFilter};
 
 use ratatui::{
     backend::{Backend, CrosstermBackend},
@@ -14,7 +12,7 @@ use ratatui::{
     Terminal,
 };
 
-use::lurk_messages::{Message};
+//use::lurk_messages::Message;
 
 mod app;
 mod ui;
@@ -26,12 +24,15 @@ use crate::{
 
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let _ = simple_logging::log_to_file("./lurkalyzer.log", LevelFilter::Info);
+
     //set up terminal
     enable_raw_mode()?;
     let mut stderr = io::stderr(); //terminal defaults to stderr/stdout to same stream
     execute!(stderr, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stderr);
     let mut terminal = Terminal::new(backend)?;
+    info!("Terminal configured");
     //create app & run it
     let mut app = App::new();
     let res = run_app(&mut terminal, &mut app);
@@ -43,33 +44,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         LeaveAlternateScreen,
     )?;
     terminal.show_cursor()?;
+    info!("Terminal restored");
 
     if let Err(err) = res{
         println!("{err:?}");
     }
 
-    // set up network
-    let ip_addr = String::from("127.0.0.1"); //change with ui config
-    let port = 5005;
-    let address = format!("{}:{}", ip_addr, port.to_string());
-
-    let listener = TcpListener::bind(&address).unwrap();
-
-    let (sender, receiver) = channel();
-    let reciever = Arc::new(Mutex::new(receiver));
-    thread::spawn(move || handle_mpsc_thread_messages(reciever));
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                let stream = Arc::new(stream);
-                let sender = sender.clone();
-                thread::spawn(move || handle_client(stream, sender));
-            }
-            Err(e) => {
-                println!("Error was {}", e);
-            }
-        }
-    }
     Ok(())
 }
 
@@ -87,7 +67,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     app.current_screen = CurrentScreen::Main;
                 }
                 KeyCode::Char('c') => {
+                    info!("Pressed C");
                     app.current_screen = CurrentScreen::Configuration;
+                    app.set_server(String::from("127.0.0.1"), 5005);
                 }
                 KeyCode::Char('r') => {
                     app.current_screen = CurrentScreen::RawMode;
@@ -101,31 +83,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                 // add exit screen
                 // add type/edit handlers
                 _ => {}
-            }
-        }
-    }
-}
-
-#[allow(dead_code)]
-fn handle_client(stream: Arc<TcpStream>, sender: Sender<Message>) -> Result<(), Box<dyn Error + Send + Sync>> {
-    println!("do nothing right now");
-
-    Ok(())
-}
-
-fn handle_mpsc_thread_messages(reciever : Arc<Mutex<Receiver<Message>>>) -> Result<(), Box<dyn Error + Send + Sync>> {
-    loop{
-        let rec = reciever.lock();
-        let message = rec
-            .unwrap()
-            .recv()
-            .map_err( |e| {
-                println!("Got error {}", e);
-            });
-
-        match message {
-            _ => {
-                println!("fat arrow");
             }
         }
     }
