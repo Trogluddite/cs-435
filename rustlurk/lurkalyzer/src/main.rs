@@ -69,7 +69,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                 KeyCode::Char('c') => {
                     info!("Pressed C");
                     app.current_screen = CurrentScreen::Configuration;
-                    app.set_server(String::from("127.0.0.1"), 5005);
+                    app.set_server(String::from("isoptera.lcsc.edu"), 5005);
                 }
                 KeyCode::Char('r') => {
                     app.current_screen = CurrentScreen::RawMode;

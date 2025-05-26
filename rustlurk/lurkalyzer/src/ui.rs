@@ -10,6 +10,7 @@ use ratatui::{
 
 #[allow(unused_imports)]        //FIXME
 use crate::app::{App, CurrentScreen};
+use lurk_messages::MessageType;
 
 #[allow(unused_variables)] //FIXME
 pub fn ui(frame: &mut Frame, app: &App){
@@ -89,10 +90,45 @@ pub fn ui(frame: &mut Frame, app: &App){
     frame.render_widget(Paragraph::new(byte_line1).block(inner_block1), inner1);
     frame.render_widget(Paragraph::new(byte_line2).block(inner_block2), inner2);
 
+
+    let list_area = message_type_list(frame.area());
     let incomming_block = Block::bordered()
         .title(incomming_title.centered())
         .border_set(border::DOUBLE);
+    //frame.render_widget(incomming_block, list_area/*inner_layout[1]*/);
     frame.render_widget(incomming_block, inner_layout[1]);
+}
+
+fn message_type_list(area: Rect) -> Rect {
+    let mut items: Vec<String> = vec![];
+    items.push(String::from("Accept"));
+    items.push(String::from("Changeroom"));
+    items.push(String::from("Character"));
+    items.push(String::from("Connection"));
+    items.push(String::from("Error"));
+    items.push(String::from("Fight"));
+    items.push(String::from("Game"));
+    items.push(String::from("Leave"));
+    items.push(String::from("Loot"));
+    items.push(String::from("Message"));
+    items.push(String::from("Room"));
+    items.push(String::from("Start"));
+    items.push(String::from("PVPFight"));
+    items.push(String::from("Version"));
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Fill(1),
+            Constraint::Fill(1),
+    ]).split(area);
+
+    Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Fill(1),
+            Constraint::Fill(1),
+        ]).split(layout[1])[1]
 }
 
 #[allow(dead_code)]

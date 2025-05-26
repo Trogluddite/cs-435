@@ -8,7 +8,6 @@ pub enum CurrentScreen{
     LurkMode,
 }
 
-
 #[allow(dead_code)]          //FIXME
 pub struct App {
     pub current_screen: CurrentScreen,
